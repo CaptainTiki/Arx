@@ -1,0 +1,42 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://art/materials/fx_blood.tres" id="1_blood"]
+
+[sub_resource type="Curve" id="Curve_shrink"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.3), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_shrink"]
+curve = SubResource("Curve_shrink")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_puff"]
+particle_flag_rotate_y = true
+emission_shape = 1
+emission_sphere_radius = 0.05
+direction = Vector3(0, 0.6, -1)
+spread = 35.0
+initial_velocity_min = 1.0
+initial_velocity_max = 2.0
+angular_velocity_min = -270.0
+angular_velocity_max = 270.0
+gravity = Vector3(0, -6, 0)
+damping_min = 2.0
+damping_max = 3.0
+scale_min = 0.7
+scale_max = 1.4
+scale_curve = SubResource("CurveTexture_shrink")
+
+[sub_resource type="BoxMesh" id="BoxMesh_puff"]
+material = ExtResource("1_blood")
+size = Vector3(0.07, 0.07, 0.07)
+
+[node name="HitPuff" type="GPUParticles3D"]
+cast_shadow = 0
+emitting = false
+amount = 5
+lifetime = 0.25
+one_shot = true
+explosiveness = 1.0
+fixed_fps = 0
+process_material = SubResource("ParticleProcessMaterial_puff")
+draw_pass_1 = SubResource("BoxMesh_puff")

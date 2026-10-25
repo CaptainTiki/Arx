@@ -31,6 +31,11 @@ func end_swing() -> void:
 	set_physics_process(false)
 
 
+## Rough contact point for FX: midpoint between this hitbox's shape and the body's shape.
+func overlap_point(body: Node3D) -> Vector3:
+	return _shape_center(self).lerp(_shape_center(body), 0.5)
+
+
 func _physics_process(_delta: float) -> void:
 	# A body already inside the box when monitoring turns on doesn't reliably fire
 	# body_entered, so sweep current overlaps too. _hit_this_swing dedupes.
@@ -46,3 +51,14 @@ func _on_body_entered(body: Node3D) -> void:
 	if body.has_method(&"take_hit"):
 		_hit_this_swing.append(body)
 		hit_landed.emit(body)
+
+
+## Global position of the node's first collision shape, or the node itself if it has none.
+static func _shape_center(node: Node3D) -> Vector3:
+	var collider: CollisionObject3D = node as CollisionObject3D
+	if collider:
+		for owner_id: int in collider.get_shape_owners():
+			var shape_node: Node3D = collider.shape_owner_get_owner(owner_id) as Node3D
+			if shape_node:
+				return shape_node.global_position
+	return node.global_position

@@ -51,11 +51,23 @@ func _run() -> void:
 	await _seconds(0.45)
 	await _grab()
 
-	# Land a hit (flash, particles, hitstop) and catch it during and just after the freeze.
-	(player.get_node("%WeaponRig") as WeaponRig).call(&"_on_hit_landed", enemy)
+	# Land a hit (flash, hit puff, hitstop) and catch it during and just after the freeze.
+	var rig: WeaponRig = player.get_node("%WeaponRig") as WeaponRig
+	rig.call(&"_on_hit_landed", enemy)
 	await _seconds(0.02)
 	await _grab()
 	await _seconds(0.1)
+	await _grab()
+
+	# Raise the block and take a strike on it (clang, block spark, shake).
+	anim.play(&"block_raise")
+	anim.seek(0.12, true)
+	anim.pause()
+	await _seconds(0.3)
+	rig.play_block_impact()
+	await _seconds(0.03)
+	await _grab()
+	await _seconds(0.08)
 	await _grab()
 
 	_write_sheet(out_path)

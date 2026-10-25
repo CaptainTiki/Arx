@@ -14,6 +14,13 @@ func _ready() -> void:
 	hp = max_hp
 
 
+## Sets a new maximum and refills to it. Owners call this on ready to apply their data.
+func set_max_hp(value: int) -> void:
+	max_hp = value
+	hp = value
+	changed.emit(hp, max_hp)
+
+
 func is_dead() -> bool:
 	return hp <= 0
 

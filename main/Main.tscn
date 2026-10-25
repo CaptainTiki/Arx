@@ -6,6 +6,9 @@
 [ext_resource type="PackedScene" path="res://world/Torch.tscn" id="4_torch"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="5_player"]
 [ext_resource type="PackedScene" path="res://enemy/Enemy.tscn" id="6_enemy"]
+[ext_resource type="Script" path="res://fx/fx_pool.gd" id="7_fx"]
+[ext_resource type="PackedScene" path="res://fx/HitPuff.tscn" id="8_hit_puff"]
+[ext_resource type="PackedScene" path="res://fx/BlockSpark.tscn" id="9_block_spark"]
 
 [sub_resource type="Environment" id="Environment_room"]
 background_mode = 1
@@ -73,8 +76,34 @@ position = Vector3(-5.65, 2.4, 3)
 [node name="WorldEnvironment" type="WorldEnvironment" parent="Room"]
 environment = SubResource("Environment_room")
 
-[node name="Player" parent="." instance=ExtResource("5_player")]
+[node name="FX" type="Node3D" parent="."]
+script = ExtResource("7_fx")
+
+[node name="HitPuffs" type="Node3D" parent="FX"]
+unique_name_in_owner = true
+
+[node name="HitPuff1" parent="FX/HitPuffs" instance=ExtResource("8_hit_puff")]
+
+[node name="HitPuff2" parent="FX/HitPuffs" instance=ExtResource("8_hit_puff")]
+
+[node name="HitPuff3" parent="FX/HitPuffs" instance=ExtResource("8_hit_puff")]
+
+[node name="HitPuff4" parent="FX/HitPuffs" instance=ExtResource("8_hit_puff")]
+
+[node name="BlockSparks" type="Node3D" parent="FX"]
+unique_name_in_owner = true
+
+[node name="BlockSpark1" parent="FX/BlockSparks" instance=ExtResource("9_block_spark")]
+
+[node name="BlockSpark2" parent="FX/BlockSparks" instance=ExtResource("9_block_spark")]
+
+[node name="BlockSpark3" parent="FX/BlockSparks" instance=ExtResource("9_block_spark")]
+
+[node name="BlockSpark4" parent="FX/BlockSparks" instance=ExtResource("9_block_spark")]
+
+[node name="Player" parent="." node_paths=PackedStringArray("fx") instance=ExtResource("5_player")]
 position = Vector3(0, 0, 3)
+fx = NodePath("../FX")
 
 [node name="Enemy" parent="." node_paths=PackedStringArray("target") instance=ExtResource("6_enemy")]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -2)

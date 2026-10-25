@@ -11,8 +11,6 @@
 [ext_resource type="Material" path="res://art/materials/steel.tres" id="9_steel"]
 [ext_resource type="Material" path="res://art/materials/steel_dark.tres" id="10_steel_dark"]
 [ext_resource type="Material" path="res://art/materials/wood_dark.tres" id="11_grip"]
-[ext_resource type="Material" path="res://art/materials/fx_spark.tres" id="12_spark"]
-[ext_resource type="Material" path="res://art/materials/fx_straw.tres" id="13_straw"]
 [ext_resource type="Texture2D" path="res://art/palette/palette.png" id="14_palette"]
 [ext_resource type="AudioStream" path="res://audio/sfx/whoosh.wav" id="15_whoosh"]
 [ext_resource type="AudioStream" path="res://audio/sfx/impact_thud.wav" id="16_thud"]
@@ -207,52 +205,6 @@ _data = {
 &"swing": SubResource("Animation_swing")
 }
 
-[sub_resource type="Curve" id="Curve_shrink"]
-_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
-point_count = 2
-
-[sub_resource type="CurveTexture" id="CurveTexture_shrink"]
-curve = SubResource("Curve_shrink")
-
-[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_sparks"]
-particle_flag_align_y = true
-emission_shape = 1
-emission_sphere_radius = 0.06
-direction = Vector3(0, 0.4, -1)
-spread = 60.0
-initial_velocity_min = 2.5
-initial_velocity_max = 6.0
-gravity = Vector3(0, -12, 0)
-damping_min = 2.0
-damping_max = 4.0
-scale_min = 0.6
-scale_max = 1.3
-scale_curve = SubResource("CurveTexture_shrink")
-
-[sub_resource type="BoxMesh" id="BoxMesh_spark"]
-material = ExtResource("12_spark")
-size = Vector3(0.018, 0.08, 0.018)
-
-[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_puff"]
-emission_shape = 1
-emission_sphere_radius = 0.1
-direction = Vector3(0, 0.6, -1)
-spread = 85.0
-initial_velocity_min = 0.8
-initial_velocity_max = 2.2
-angular_velocity_min = -360.0
-angular_velocity_max = 360.0
-gravity = Vector3(0, -3, 0)
-damping_min = 3.0
-damping_max = 5.0
-scale_min = 0.7
-scale_max = 1.4
-scale_curve = SubResource("CurveTexture_shrink")
-
-[sub_resource type="BoxMesh" id="BoxMesh_puff"]
-material = ExtResource("13_straw")
-size = Vector3(0.05, 0.05, 0.05)
-
 [sub_resource type="AtlasTexture" id="AtlasTexture_dot"]
 atlas = ExtResource("14_palette")
 region = Rect2(58, 26, 4, 4)
@@ -326,6 +278,7 @@ cast_shadow = 0
 mesh = SubResource("BoxMesh_guard")
 
 [node name="Blade" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/SwordMesh"]
+unique_name_in_owner = true
 position = Vector3(0, 0.465, 0)
 cast_shadow = 0
 mesh = SubResource("BoxMesh_blade")
@@ -347,31 +300,6 @@ unique_name_in_owner = true
 libraries = {
 &"": SubResource("AnimationLibrary_weapon")
 }
-
-[node name="HitSparks" type="GPUParticles3D" parent="Head/Camera3D/WeaponRig"]
-unique_name_in_owner = true
-top_level = true
-cast_shadow = 0
-emitting = false
-amount = 14
-lifetime = 0.35
-one_shot = true
-explosiveness = 1.0
-fixed_fps = 0
-process_material = SubResource("ParticleProcessMaterial_sparks")
-draw_pass_1 = SubResource("BoxMesh_spark")
-
-[node name="HitPuff" type="GPUParticles3D" parent="Head/Camera3D/WeaponRig/HitSparks"]
-unique_name_in_owner = true
-cast_shadow = 0
-emitting = false
-amount = 10
-lifetime = 0.6
-one_shot = true
-explosiveness = 1.0
-fixed_fps = 0
-process_material = SubResource("ParticleProcessMaterial_puff")
-draw_pass_1 = SubResource("BoxMesh_puff")
 
 [node name="WhooshSfx" type="AudioStreamPlayer" parent="Head/Camera3D/WeaponRig"]
 unique_name_in_owner = true

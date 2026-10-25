@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://enemy/enemy.gd" id="1_enemy"]
 [ext_resource type="Script" path="res://combat/health.gd" id="2_health"]
 [ext_resource type="Script" path="res://combat/melee_hitbox.gd" id="3_hitbox"]
-[ext_resource type="Resource" path="res://enemy/training_dummy.tres" id="4_data"]
+[ext_resource type="Resource" path="res://enemy/grunt.tres" id="4_data"]
 [ext_resource type="Material" path="res://art/materials/burlap.tres" id="5_burlap"]
 [ext_resource type="Material" path="res://art/materials/burlap_light.tres" id="6_burlap_light"]
 [ext_resource type="Material" path="res://art/materials/burlap_dark.tres" id="7_burlap_dark"]
@@ -57,7 +57,8 @@ material = ExtResource("8_wood")
 size = Vector3(0.14, 0.65, 0.14)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_hitbox"]
-size = Vector3(1.0, 1.3, 1.3)
+resource_local_to_scene = true
+size = Vector3(1, 1.3, 2.3)
 
 [sub_resource type="Animation" id="Animation_reset"]
 length = 0.001
@@ -514,8 +515,9 @@ monitoring = false
 monitorable = false
 script = ExtResource("3_hitbox")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitbox"]
-position = Vector3(0, 1, -1.05)
+[node name="HitboxShape" type="CollisionShape3D" parent="Hitbox"]
+unique_name_in_owner = true
+position = Vector3(0, 1, -1.15)
 shape = SubResource("BoxShape3D_hitbox")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]

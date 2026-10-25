@@ -2,6 +2,9 @@ class_name Player
 extends CharacterBody3D
 ## First-person controller. Reads PlayerIntent, moves and aims, forwards combat input to the WeaponRig.
 
+## Pooled hit/block particles in the level (Main/FX). Optional, so Player.tscn still runs on its own.
+@export var fx: FxPool
+
 @export_group("Movement")
 @export var walk_speed: float = 5.0
 @export var sprint_speed: float = 7.5

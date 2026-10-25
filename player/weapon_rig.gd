@@ -20,8 +20,6 @@ enum State { IDLE, SWING, BLOCK }
 @export var hit_kick_deg: Vector3 = Vector3(-2.4, -1.2, -2.2)
 @export var kick_in_time: float = 0.035
 @export var kick_out_time: float = 0.2
-## Hit particles spawn this far in front of the target's center, toward the camera.
-@export var impact_surface_offset: float = 0.3
 
 @export_group("Block Impact")
 @export var block_shake_deg: float = 0.7
@@ -51,8 +49,7 @@ var is_blocking: bool:
 @onready var _camera: Camera3D = %Camera3D
 @onready var _hitbox: MeleeHitbox = %Hitbox
 @onready var _anim: AnimationPlayer = %AnimationPlayer
-@onready var _hit_sparks: GPUParticles3D = %HitSparks
-@onready var _hit_puff: GPUParticles3D = %HitPuff
+@onready var _blade: Node3D = %Blade
 @onready var _whoosh_sfx: AudioStreamPlayer = %WhooshSfx
 @onready var _impact_sfx: AudioStreamPlayer = %ImpactSfx
 @onready var _clang_sfx: AudioStreamPlayer = %ClangSfx
@@ -128,6 +125,8 @@ func try_swing() -> bool:
 
 func play_block_impact() -> void:
 	_anim.play(&"block_impact")
+	if _player.fx:
+		_player.fx.play_block_spark(_blade.global_position)
 	_clang_sfx.play()
 	shake(block_shake_deg, block_shake_time)
 	_hitstop(block_hitstop)
@@ -155,11 +154,12 @@ func _on_hit_landed(target: Node3D) -> void:
 	var to_target: Vector3 = target.global_position - _player.global_position
 	to_target.y = 0.0
 	var hit: HitInfo = HitInfo.new(weapon.damage, _player, to_target.normalized(), true)
-	var impact_point: Vector3 = _impact_point(target)
+	var contact: Vector3 = _hitbox.overlap_point(target)
 	target.call(&"take_hit", hit)
 	_whoosh_sfx.stop()
 	_impact_sfx.play()
-	_spawn_hit_fx(impact_point)
+	if _player.fx:
+		_player.fx.play_hit_puff(contact, hit.direction)
 	kick(hit_kick_deg)
 	_hitstop(weapon.hitstop)
 
@@ -190,29 +190,6 @@ func _hitstop(duration: float) -> void:
 	# A newer hitstop started while we waited; it owns the restore.
 	if token == _hitstop_token:
 		Engine.time_scale = 1.0
-
-
-func _spawn_hit_fx(point: Vector3) -> void:
-	_hit_sparks.global_position = point
-	_hit_sparks.look_at(_camera.global_position, Vector3.UP)
-	_hit_sparks.restart()
-	_hit_puff.restart()
-
-
-## Approximate contact point: on the target's surface facing us, at the height our view ray crosses it.
-func _impact_point(target: Node3D) -> Vector3:
-	var cam_pos: Vector3 = _camera.global_position
-	var forward: Vector3 = -_camera.global_basis.z
-	var base: Vector3 = target.global_position
-	var to_cam: Vector3 = cam_pos - base
-	to_cam.y = 0.0
-	var distance: float = maxf(to_cam.length(), 0.001)
-	var offset: float = minf(impact_surface_offset, distance)
-	var point: Vector3 = base + to_cam / distance * offset
-	var flat_forward: float = maxf(Vector2(forward.x, forward.z).length(), 0.1)
-	var ray_height: float = cam_pos.y + forward.y * (distance - offset) / flat_forward
-	point.y = clampf(ray_height, base.y + 0.4, base.y + 1.7)
-	return point
 
 
 ## Swing timing lives in WeaponData; push it into the animation so method keys and playback speed match.
