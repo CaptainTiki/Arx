@@ -1,0 +1,486 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://player/player.gd" id="1_player"]
+[ext_resource type="Script" path="res://player/player_intent.gd" id="2_intent"]
+[ext_resource type="Script" path="res://combat/health.gd" id="3_health"]
+[ext_resource type="Script" path="res://combat/stamina.gd" id="4_stamina"]
+[ext_resource type="Script" path="res://player/weapon_rig.gd" id="5_rig"]
+[ext_resource type="Script" path="res://combat/melee_hitbox.gd" id="6_hitbox"]
+[ext_resource type="Script" path="res://player/hud.gd" id="7_hud"]
+[ext_resource type="Resource" path="res://weapons/rusty_sword.tres" id="8_sword"]
+[ext_resource type="Material" path="res://art/materials/steel.tres" id="9_steel"]
+[ext_resource type="Material" path="res://art/materials/steel_dark.tres" id="10_steel_dark"]
+[ext_resource type="Material" path="res://art/materials/wood_dark.tres" id="11_grip"]
+[ext_resource type="Material" path="res://art/materials/fx_spark.tres" id="12_spark"]
+[ext_resource type="Material" path="res://art/materials/fx_straw.tres" id="13_straw"]
+[ext_resource type="Texture2D" path="res://art/palette/palette.png" id="14_palette"]
+[ext_resource type="AudioStream" path="res://audio/sfx/whoosh.wav" id="15_whoosh"]
+[ext_resource type="AudioStream" path="res://audio/sfx/impact_thud.wav" id="16_thud"]
+[ext_resource type="AudioStream" path="res://audio/sfx/block_clang.wav" id="17_clang"]
+[ext_resource type="AudioStream" path="res://audio/sfx/player_hurt.wav" id="18_hurt"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.35
+height = 1.8
+
+[sub_resource type="BoxMesh" id="BoxMesh_grip"]
+material = ExtResource("11_grip")
+size = Vector3(0.032, 0.16, 0.032)
+
+[sub_resource type="BoxMesh" id="BoxMesh_pommel"]
+material = ExtResource("10_steel_dark")
+size = Vector3(0.045, 0.03, 0.045)
+
+[sub_resource type="BoxMesh" id="BoxMesh_guard"]
+material = ExtResource("10_steel_dark")
+size = Vector3(0.18, 0.025, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_blade"]
+material = ExtResource("9_steel")
+size = Vector3(0.05, 0.72, 0.012)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hitbox"]
+size = Vector3(0.6, 0.5, 1.4)
+
+[sub_resource type="Animation" id="Animation_reset"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("SwordMesh:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0.3, -0.32, -0.42)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("SwordMesh:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(-0.8727, -0.1396, 0.2443)]
+}
+
+[sub_resource type="Animation" id="Animation_swing"]
+resource_name = "swing"
+length = 0.45
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("SwordMesh:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.09, 0.13, 0.2, 0.27, 0.33, 0.4, 0.45),
+"transitions": PackedFloat32Array(0.5, 2, 1, 1, 0.5, -2, 0.6, 1),
+"update": 0,
+"values": [Vector3(0.3, -0.32, -0.42), Vector3(0.34, -0.08, -0.36), Vector3(0.34, -0.14, -0.5), Vector3(0.1, -0.2, -0.58), Vector3(-0.28, -0.26, -0.48), Vector3(-0.36, -0.36, -0.38), Vector3(0.1, -0.55, -0.36), Vector3(0.3, -0.32, -0.42)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("SwordMesh:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.09, 0.13, 0.2, 0.27, 0.33, 0.4, 0.45),
+"transitions": PackedFloat32Array(0.5, 2, 1, 1, 0.5, -2, 0.6, 1),
+"update": 0,
+"values": [Vector3(-0.8727, -0.1396, 0.2443), Vector3(0.4363, -0.2618, -0.9599), Vector3(-1.1345, -1.309, 0), Vector3(-1.4835, 0.6109, 0), Vector3(-1.7453, 1.3963, 0), Vector3(-1.9199, 1.7453, 0.1745), Vector3(-1.2217, 0.5236, 0), Vector3(-0.8727, -0.1396, 0.2443)]
+}
+tracks/2/type = "method"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Hitbox")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0.12, 0.28),
+"transitions": PackedFloat32Array(1, 1),
+"values": [{
+"args": [],
+"method": &"begin_swing"
+}, {
+"args": [],
+"method": &"end_swing"
+}]
+}
+
+[sub_resource type="Animation" id="Animation_block_raise"]
+resource_name = "block_raise"
+length = 0.12
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("SwordMesh:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.12),
+"transitions": PackedFloat32Array(0.4, 1),
+"update": 0,
+"values": [Vector3(0.3, -0.32, -0.42), Vector3(0.22, -0.17, -0.44)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("SwordMesh:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.12),
+"transitions": PackedFloat32Array(0.4, 1),
+"update": 0,
+"values": [Vector3(-0.8727, -0.1396, 0.2443), Vector3(0.0873, -0.2094, 1.4835)]
+}
+
+[sub_resource type="Animation" id="Animation_block_lower"]
+resource_name = "block_lower"
+length = 0.15
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("SwordMesh:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.15),
+"transitions": PackedFloat32Array(-2, 1),
+"update": 0,
+"values": [Vector3(0.22, -0.17, -0.44), Vector3(0.3, -0.32, -0.42)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("SwordMesh:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.15),
+"transitions": PackedFloat32Array(-2, 1),
+"update": 0,
+"values": [Vector3(0.0873, -0.2094, 1.4835), Vector3(-0.8727, -0.1396, 0.2443)]
+}
+
+[sub_resource type="Animation" id="Animation_block_impact"]
+resource_name = "block_impact"
+length = 0.22
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("SwordMesh:position")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.035, 0.22),
+"transitions": PackedFloat32Array(1, 0.4, 1),
+"update": 0,
+"values": [Vector3(0.22, -0.17, -0.44), Vector3(0.26, -0.12, -0.33), Vector3(0.22, -0.17, -0.44)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("SwordMesh:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.035, 0.22),
+"transitions": PackedFloat32Array(1, 0.4, 1),
+"update": 0,
+"values": [Vector3(0.0873, -0.2094, 1.4835), Vector3(0.2443, -0.0698, 1.3265), Vector3(0.0873, -0.2094, 1.4835)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_weapon"]
+_data = {
+&"RESET": SubResource("Animation_reset"),
+&"block_impact": SubResource("Animation_block_impact"),
+&"block_lower": SubResource("Animation_block_lower"),
+&"block_raise": SubResource("Animation_block_raise"),
+&"swing": SubResource("Animation_swing")
+}
+
+[sub_resource type="Curve" id="Curve_shrink"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="CurveTexture_shrink"]
+curve = SubResource("Curve_shrink")
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_sparks"]
+particle_flag_align_y = true
+emission_shape = 1
+emission_sphere_radius = 0.06
+direction = Vector3(0, 0.4, -1)
+spread = 60.0
+initial_velocity_min = 2.5
+initial_velocity_max = 6.0
+gravity = Vector3(0, -12, 0)
+damping_min = 2.0
+damping_max = 4.0
+scale_min = 0.6
+scale_max = 1.3
+scale_curve = SubResource("CurveTexture_shrink")
+
+[sub_resource type="BoxMesh" id="BoxMesh_spark"]
+material = ExtResource("12_spark")
+size = Vector3(0.018, 0.08, 0.018)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_puff"]
+emission_shape = 1
+emission_sphere_radius = 0.1
+direction = Vector3(0, 0.6, -1)
+spread = 85.0
+initial_velocity_min = 0.8
+initial_velocity_max = 2.2
+angular_velocity_min = -360.0
+angular_velocity_max = 360.0
+gravity = Vector3(0, -3, 0)
+damping_min = 3.0
+damping_max = 5.0
+scale_min = 0.7
+scale_max = 1.4
+scale_curve = SubResource("CurveTexture_shrink")
+
+[sub_resource type="BoxMesh" id="BoxMesh_puff"]
+material = ExtResource("13_straw")
+size = Vector3(0.05, 0.05, 0.05)
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_dot"]
+atlas = ExtResource("14_palette")
+region = Rect2(58, 26, 4, 4)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bar_bg"]
+bg_color = Color(0.106, 0.098, 0.125, 0.85)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.055, 0.047, 0.071, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hp"]
+bg_color = Color(0.722, 0.161, 0.122, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stamina"]
+bg_color = Color(0.788, 0.604, 0.357, 1)
+
+[node name="Player" type="CharacterBody3D" groups=["player"]]
+collision_layer = 2
+collision_mask = 5
+script = ExtResource("1_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_body")
+
+[node name="PlayerIntent" type="Node" parent="."]
+unique_name_in_owner = true
+process_priority = -1
+process_physics_priority = -1
+script = ExtResource("2_intent")
+
+[node name="Health" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("3_health")
+
+[node name="Stamina" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("4_stamina")
+
+[node name="Head" type="Node3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 1.6, 0)
+
+[node name="Camera3D" type="Camera3D" parent="Head"]
+unique_name_in_owner = true
+current = true
+fov = 75.0
+near = 0.03
+
+[node name="WeaponRig" type="Node3D" parent="Head/Camera3D"]
+unique_name_in_owner = true
+script = ExtResource("5_rig")
+weapon = ExtResource("8_sword")
+
+[node name="SwordMesh" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig"]
+position = Vector3(0.3, -0.32, -0.42)
+rotation = Vector3(-0.8727, -0.1396, 0.2443)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_grip")
+
+[node name="Pommel" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/SwordMesh"]
+position = Vector3(0, -0.095, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_pommel")
+
+[node name="Guard" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/SwordMesh"]
+position = Vector3(0, 0.0925, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_guard")
+
+[node name="Blade" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/SwordMesh"]
+position = Vector3(0, 0.465, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_blade")
+
+[node name="Hitbox" type="Area3D" parent="Head/Camera3D/WeaponRig"]
+unique_name_in_owner = true
+collision_layer = 0
+collision_mask = 4
+monitoring = false
+monitorable = false
+script = ExtResource("6_hitbox")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Head/Camera3D/WeaponRig/Hitbox"]
+position = Vector3(0, -0.05, -0.85)
+shape = SubResource("BoxShape3D_hitbox")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Head/Camera3D/WeaponRig"]
+unique_name_in_owner = true
+libraries = {
+&"": SubResource("AnimationLibrary_weapon")
+}
+
+[node name="HitSparks" type="GPUParticles3D" parent="Head/Camera3D/WeaponRig"]
+unique_name_in_owner = true
+top_level = true
+cast_shadow = 0
+emitting = false
+amount = 14
+lifetime = 0.35
+one_shot = true
+explosiveness = 1.0
+fixed_fps = 0
+process_material = SubResource("ParticleProcessMaterial_sparks")
+draw_pass_1 = SubResource("BoxMesh_spark")
+
+[node name="HitPuff" type="GPUParticles3D" parent="Head/Camera3D/WeaponRig/HitSparks"]
+unique_name_in_owner = true
+cast_shadow = 0
+emitting = false
+amount = 10
+lifetime = 0.6
+one_shot = true
+explosiveness = 1.0
+fixed_fps = 0
+process_material = SubResource("ParticleProcessMaterial_puff")
+draw_pass_1 = SubResource("BoxMesh_puff")
+
+[node name="WhooshSfx" type="AudioStreamPlayer" parent="Head/Camera3D/WeaponRig"]
+unique_name_in_owner = true
+stream = ExtResource("15_whoosh")
+volume_db = -6.0
+
+[node name="ImpactSfx" type="AudioStreamPlayer" parent="Head/Camera3D/WeaponRig"]
+unique_name_in_owner = true
+stream = ExtResource("16_thud")
+
+[node name="ClangSfx" type="AudioStreamPlayer" parent="Head/Camera3D/WeaponRig"]
+unique_name_in_owner = true
+stream = ExtResource("17_clang")
+volume_db = -3.0
+
+[node name="HurtSfx" type="AudioStreamPlayer" parent="."]
+unique_name_in_owner = true
+stream = ExtResource("18_hurt")
+volume_db = -4.0
+
+[node name="HUD" type="CanvasLayer" parent="."]
+unique_name_in_owner = true
+script = ExtResource("7_hud")
+
+[node name="DamageFlash" type="ColorRect" parent="HUD"]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.722, 0.161, 0.122, 0)
+
+[node name="Crosshair" type="TextureRect" parent="HUD"]
+modulate = Color(1, 1, 1, 0.8)
+texture_filter = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -2.0
+offset_top = -2.0
+offset_right = 2.0
+offset_bottom = 2.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = SubResource("AtlasTexture_dot")
+expand_mode = 1
+
+[node name="Bars" type="VBoxContainer" parent="HUD"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -58.0
+offset_right = 304.0
+offset_bottom = -24.0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="HealthBar" type="ProgressBar" parent="HUD/Bars"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(280, 14)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_bar_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_hp")
+value = 100.0
+show_percentage = false
+
+[node name="StaminaBar" type="ProgressBar" parent="HUD/Bars"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(280, 8)
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/background = SubResource("StyleBoxFlat_bar_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_stamina")
+value = 100.0
+show_percentage = false
+
+[node name="DeathLabel" type="Label" parent="HUD"]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -300.0
+offset_top = -40.0
+offset_right = 300.0
+offset_bottom = 40.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.722, 0.161, 0.122, 1)
+theme_override_font_sizes/font_size = 56
+text = "YOU DIED"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="HintLabel" type="Label" parent="HUD"]
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 700.0
+offset_bottom = 32.0
+theme_override_colors/font_color = Color(0.788, 0.753, 0.725, 0.55)
+theme_override_font_sizes/font_size = 13
+text = "WASD move   Shift sprint   LMB swing   RMB block   R restart   Esc free mouse"

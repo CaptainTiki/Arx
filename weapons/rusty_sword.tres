@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://combat/weapon_data.gd" id="1_weapon"]
+
+[resource]
+script = ExtResource("1_weapon")
+display_name = "Rusty Sword"
+damage = 25
+stamina_cost = 10
+swing_time = 0.45
+active_start = 0.12
+active_end = 0.28
+lunge_distance = 0.6
+hitstop = 0.05

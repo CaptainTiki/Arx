@@ -1,0 +1,246 @@
+class_name WeaponRig
+extends Node3D
+## First-person viewmodel and where melee feel lives: swing/block state, hit feedback,
+## camera kick and shake, bob and sway.
+##
+## Transform ownership: the AnimationPlayer drives SwordMesh; this script drives its own
+## transform (bob/sway) and Camera3D.rotation (kick/shake). Head keeps mouse-look pitch,
+## so kicks go on the camera beneath it instead of fighting the look code.
+
+enum State { IDLE, SWING, BLOCK }
+
+@export var weapon: WeaponData
+
+@export_group("Hit Feedback")
+## Engine.time_scale while hitstop holds. Duration comes from WeaponData.hitstop.
+@export var hitstop_time_scale: float = 0.05
+## Camera kick when a swing starts, in degrees (pitch, yaw, roll).
+@export var swing_kick_deg: Vector3 = Vector3(-0.8, 0.9, 1.4)
+## Camera kick when a swing connects, in degrees (pitch, yaw, roll).
+@export var hit_kick_deg: Vector3 = Vector3(-2.4, -1.2, -2.2)
+@export var kick_in_time: float = 0.035
+@export var kick_out_time: float = 0.2
+## Hit particles spawn this far in front of the target's center, toward the camera.
+@export var impact_surface_offset: float = 0.3
+
+@export_group("Block Impact")
+@export var block_shake_deg: float = 0.7
+@export var block_shake_time: float = 0.18
+@export var block_hitstop: float = 0.035
+
+@export_group("Bob & Sway")
+## Bob offset in meters at walk speed (x = side, y = vertical).
+@export var bob_amplitude: Vector2 = Vector2(0.01, 0.008)
+## Bob cycles per second at walk speed. Scales with movement speed.
+@export var bob_frequency: float = 1.7
+## Degrees of sway per pixel/second of mouse motion.
+@export var sway_per_pixel_speed: float = 0.0025
+@export var sway_max_deg: float = 3.5
+@export var sway_smoothing: float = 12.0
+
+@export_group("Input")
+## A click this long before the rig frees up (mid-swing, mid-block) still swings. 0 = no buffer.
+@export var attack_buffer_time: float = 0.15
+
+var is_blocking: bool:
+	get:
+		return _state == State.BLOCK
+
+@onready var _player: Player = owner as Player
+@onready var _stamina: Stamina = %Stamina
+@onready var _camera: Camera3D = %Camera3D
+@onready var _hitbox: MeleeHitbox = %Hitbox
+@onready var _anim: AnimationPlayer = %AnimationPlayer
+@onready var _hit_sparks: GPUParticles3D = %HitSparks
+@onready var _hit_puff: GPUParticles3D = %HitPuff
+@onready var _whoosh_sfx: AudioStreamPlayer = %WhooshSfx
+@onready var _impact_sfx: AudioStreamPlayer = %ImpactSfx
+@onready var _clang_sfx: AudioStreamPlayer = %ClangSfx
+
+var _state: State = State.IDLE
+var _swing_speed: float = 1.0
+var _attack_buffer_left: float = 0.0
+var _hitstop_token: int = 0
+var _kick_rot: Vector3 = Vector3.ZERO
+var _shake_rot: Vector3 = Vector3.ZERO
+var _kick_tween: Tween
+var _shake_tween: Tween
+var _bob_phase: float = 0.0
+var _bob_weight: float = 0.0
+var _sway: Vector2 = Vector2.ZERO
+
+
+func _ready() -> void:
+	_hitbox.owner_body = _player
+	_hitbox.hit_landed.connect(_on_hit_landed)
+	_anim.animation_finished.connect(_on_animation_finished)
+	_apply_weapon_timing()
+
+
+func _exit_tree() -> void:
+	# A scene reload mid-hitstop would otherwise leave the game in slow motion.
+	Engine.time_scale = 1.0
+
+
+## Called by Player every physics frame.
+func update_combat(attack_pressed: bool, block_held: bool, delta: float) -> void:
+	if attack_pressed:
+		_attack_buffer_left = maxf(attack_buffer_time, delta)
+	match _state:
+		State.IDLE:
+			if block_held:
+				_enter_block()
+			elif _attack_buffer_left > 0.0:
+				try_swing()
+				_attack_buffer_left = 0.0
+		State.BLOCK:
+			if not block_held:
+				_exit_block()
+	_attack_buffer_left = maxf(_attack_buffer_left - delta, 0.0)
+
+
+## Called by Player every rendered frame with this frame's mouse delta.
+func update_view(look: Vector2, delta: float, speed_ratio: float) -> void:
+	# Sway runs on real time so it keeps tracking the mouse through hitstop.
+	var real_delta: float = delta / maxf(Engine.time_scale, 0.001)
+	var look_speed: Vector2 = look / maxf(real_delta, 0.0001)
+	var sway_target: Vector2 = (look_speed * sway_per_pixel_speed).clampf(-sway_max_deg, sway_max_deg)
+	_sway = _sway.lerp(sway_target, 1.0 - exp(-sway_smoothing * real_delta))
+	# Bob runs on scaled time so it freezes with the world during hitstop.
+	var ratio: float = clampf(speed_ratio, 0.0, 1.5)
+	_bob_weight = lerpf(_bob_weight, ratio, 1.0 - exp(-10.0 * delta))
+	_bob_phase = wrapf(_bob_phase + delta * TAU * bob_frequency * ratio, 0.0, TAU)
+	position = Vector3(sin(_bob_phase) * bob_amplitude.x, sin(_bob_phase * 2.0) * bob_amplitude.y, 0.0) * _bob_weight
+	rotation = Vector3(deg_to_rad(_sway.y), deg_to_rad(_sway.x), deg_to_rad(_sway.x) * 0.5)
+
+
+## Starts a swing if the rig is free and there's stamina for it.
+func try_swing() -> bool:
+	if _state != State.IDLE or not _stamina.try_spend(weapon.stamina_cost):
+		return false
+	_state = State.SWING
+	_anim.play(&"swing", 0.05, _swing_speed)
+	_whoosh_sfx.play()
+	_player.apply_lunge(weapon.lunge_distance)
+	kick(swing_kick_deg)
+	return true
+
+
+func play_block_impact() -> void:
+	_anim.play(&"block_impact")
+	_clang_sfx.play()
+	shake(block_shake_deg, block_shake_time)
+	_hitstop(block_hitstop)
+
+
+## Rotational camera punch: snaps to `degrees` then eases back to zero. Ignores hitstop.
+func kick(degrees: Vector3) -> void:
+	if _kick_tween:
+		_kick_tween.kill()
+	var target: Vector3 = Vector3(deg_to_rad(degrees.x), deg_to_rad(degrees.y), deg_to_rad(degrees.z))
+	_kick_tween = create_tween().set_ignore_time_scale(true)
+	_kick_tween.tween_method(_set_kick, _kick_rot, target, kick_in_time).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_kick_tween.tween_method(_set_kick, target, Vector3.ZERO, kick_out_time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
+## Random rotational jitter that decays to zero over `duration`. Ignores hitstop.
+func shake(strength_deg: float, duration: float) -> void:
+	if _shake_tween:
+		_shake_tween.kill()
+	_shake_tween = create_tween().set_ignore_time_scale(true)
+	_shake_tween.tween_method(_apply_shake.bind(deg_to_rad(strength_deg)), 1.0, 0.0, duration)
+
+
+func _on_hit_landed(target: Node3D) -> void:
+	var to_target: Vector3 = target.global_position - _player.global_position
+	to_target.y = 0.0
+	var hit: HitInfo = HitInfo.new(weapon.damage, _player, to_target.normalized(), true)
+	var impact_point: Vector3 = _impact_point(target)
+	target.call(&"take_hit", hit)
+	_whoosh_sfx.stop()
+	_impact_sfx.play()
+	_spawn_hit_fx(impact_point)
+	kick(hit_kick_deg)
+	_hitstop(weapon.hitstop)
+
+
+func _on_animation_finished(anim_name: StringName) -> void:
+	if anim_name == &"swing":
+		_hitbox.end_swing()
+		_state = State.IDLE
+
+
+func _enter_block() -> void:
+	_state = State.BLOCK
+	_anim.play(&"block_raise", 0.05)
+
+
+func _exit_block() -> void:
+	_state = State.IDLE
+	_anim.play(&"block_lower", 0.05)
+
+
+func _hitstop(duration: float) -> void:
+	if duration <= 0.0:
+		return
+	_hitstop_token += 1
+	var token: int = _hitstop_token
+	Engine.time_scale = hitstop_time_scale
+	await get_tree().create_timer(duration, true, false, true).timeout
+	# A newer hitstop started while we waited; it owns the restore.
+	if token == _hitstop_token:
+		Engine.time_scale = 1.0
+
+
+func _spawn_hit_fx(point: Vector3) -> void:
+	_hit_sparks.global_position = point
+	_hit_sparks.look_at(_camera.global_position, Vector3.UP)
+	_hit_sparks.restart()
+	_hit_puff.restart()
+
+
+## Approximate contact point: on the target's surface facing us, at the height our view ray crosses it.
+func _impact_point(target: Node3D) -> Vector3:
+	var cam_pos: Vector3 = _camera.global_position
+	var forward: Vector3 = -_camera.global_basis.z
+	var base: Vector3 = target.global_position
+	var to_cam: Vector3 = cam_pos - base
+	to_cam.y = 0.0
+	var distance: float = maxf(to_cam.length(), 0.001)
+	var offset: float = minf(impact_surface_offset, distance)
+	var point: Vector3 = base + to_cam / distance * offset
+	var flat_forward: float = maxf(Vector2(forward.x, forward.z).length(), 0.1)
+	var ray_height: float = cam_pos.y + forward.y * (distance - offset) / flat_forward
+	point.y = clampf(ray_height, base.y + 0.4, base.y + 1.7)
+	return point
+
+
+## Swing timing lives in WeaponData; push it into the animation so method keys and playback speed match.
+func _apply_weapon_timing() -> void:
+	var swing: Animation = _anim.get_animation(&"swing")
+	_swing_speed = swing.length / weapon.swing_time
+	var track: int = swing.find_track(NodePath("Hitbox"), Animation.TYPE_METHOD)
+	if track == -1:
+		push_error("WeaponRig: swing animation has no Hitbox method track")
+		return
+	_set_method_key_time(swing, track, &"end_swing", weapon.active_end * _swing_speed)
+	_set_method_key_time(swing, track, &"begin_swing", weapon.active_start * _swing_speed)
+
+
+func _set_method_key_time(anim: Animation, track: int, method: StringName, time: float) -> void:
+	for key: int in anim.track_get_key_count(track):
+		if anim.method_track_get_name(track, key) == method:
+			anim.track_set_key_time(track, key, time)
+			return
+	push_error("WeaponRig: no '%s' key on the swing method track" % method)
+
+
+func _set_kick(value: Vector3) -> void:
+	_kick_rot = value
+	_camera.rotation = _kick_rot + _shake_rot
+
+
+func _apply_shake(falloff: float, strength: float) -> void:
+	var amp: float = strength * falloff * falloff
+	_shake_rot = Vector3(randf_range(-amp, amp), randf_range(-amp, amp), randf_range(-amp, amp) * 0.5)
+	_camera.rotation = _kick_rot + _shake_rot

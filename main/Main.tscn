@@ -1,0 +1,81 @@
+[gd_scene format=3]
+
+[ext_resource type="Material" path="res://art/materials/stone_floor.tres" id="1_floor"]
+[ext_resource type="Material" path="res://art/materials/stone_wall.tres" id="2_wall"]
+[ext_resource type="Material" path="res://art/materials/stone_ceiling.tres" id="3_ceiling"]
+[ext_resource type="PackedScene" path="res://world/Torch.tscn" id="4_torch"]
+[ext_resource type="PackedScene" path="res://player/Player.tscn" id="5_player"]
+[ext_resource type="PackedScene" path="res://enemy/Enemy.tscn" id="6_enemy"]
+
+[sub_resource type="Environment" id="Environment_room"]
+background_mode = 1
+background_color = Color(0.02, 0.018, 0.026, 1)
+ambient_light_source = 2
+ambient_light_color = Color(0.32, 0.3, 0.42, 1)
+ambient_light_energy = 0.6
+tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.05, 0.045, 0.06, 1)
+fog_density = 0.025
+
+[node name="Main" type="Node3D"]
+
+[node name="Room" type="Node3D" parent="."]
+
+[node name="Floor" type="CSGBox3D" parent="Room"]
+position = Vector3(0, -0.1, 0)
+use_collision = true
+size = Vector3(12.6, 0.2, 12.6)
+material = ExtResource("1_floor")
+
+[node name="Ceiling" type="CSGBox3D" parent="Room"]
+position = Vector3(0, 4.1, 0)
+use_collision = true
+size = Vector3(12.6, 0.2, 12.6)
+material = ExtResource("3_ceiling")
+
+[node name="WallNorth" type="CSGBox3D" parent="Room"]
+position = Vector3(0, 2, -6.15)
+use_collision = true
+size = Vector3(12.6, 4, 0.3)
+material = ExtResource("2_wall")
+
+[node name="WallSouth" type="CSGBox3D" parent="Room"]
+position = Vector3(0, 2, 6.15)
+use_collision = true
+size = Vector3(12.6, 4, 0.3)
+material = ExtResource("2_wall")
+
+[node name="WallEast" type="CSGBox3D" parent="Room"]
+position = Vector3(6.15, 2, 0)
+use_collision = true
+size = Vector3(0.3, 4, 12)
+material = ExtResource("2_wall")
+
+[node name="WallWest" type="CSGBox3D" parent="Room"]
+position = Vector3(-6.15, 2, 0)
+use_collision = true
+size = Vector3(0.3, 4, 12)
+material = ExtResource("2_wall")
+
+[node name="TorchEastFar" parent="Room" instance=ExtResource("4_torch")]
+position = Vector3(5.65, 2.4, -2.5)
+
+[node name="TorchWestFar" parent="Room" instance=ExtResource("4_torch")]
+position = Vector3(-5.65, 2.4, -2.5)
+
+[node name="TorchEastNear" parent="Room" instance=ExtResource("4_torch")]
+position = Vector3(5.65, 2.4, 3)
+
+[node name="TorchWestNear" parent="Room" instance=ExtResource("4_torch")]
+position = Vector3(-5.65, 2.4, 3)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="Room"]
+environment = SubResource("Environment_room")
+
+[node name="Player" parent="." instance=ExtResource("5_player")]
+position = Vector3(0, 0, 3)
+
+[node name="Enemy" parent="." node_paths=PackedStringArray("target") instance=ExtResource("6_enemy")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -2)
+target = NodePath("../Player")

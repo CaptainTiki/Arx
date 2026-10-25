@@ -1,0 +1,574 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://enemy/enemy.gd" id="1_enemy"]
+[ext_resource type="Script" path="res://combat/health.gd" id="2_health"]
+[ext_resource type="Script" path="res://combat/melee_hitbox.gd" id="3_hitbox"]
+[ext_resource type="Resource" path="res://enemy/training_dummy.tres" id="4_data"]
+[ext_resource type="Material" path="res://art/materials/burlap.tres" id="5_burlap"]
+[ext_resource type="Material" path="res://art/materials/burlap_light.tres" id="6_burlap_light"]
+[ext_resource type="Material" path="res://art/materials/burlap_dark.tres" id="7_burlap_dark"]
+[ext_resource type="Material" path="res://art/materials/wood.tres" id="8_wood"]
+[ext_resource type="Material" path="res://art/materials/eye_glow.tres" id="9_eyes"]
+[ext_resource type="Texture2D" path="res://art/palette/palette.png" id="10_palette"]
+[ext_resource type="AudioStream" path="res://audio/sfx/enemy_grunt.wav" id="11_grunt"]
+[ext_resource type="AudioStream" path="res://audio/sfx/whoosh.wav" id="12_whoosh"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flash"]
+resource_local_to_scene = true
+resource_name = "hit_flash_overlay"
+transparency = 1
+shading_mode = 0
+albedo_color = Color(1, 1, 1, 0)
+albedo_texture = ExtResource("10_palette")
+uv1_scale = Vector3(0, 0, 0)
+uv1_offset = Vector3(0.9375, 0.875, 0)
+texture_filter = 0
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+radius = 0.4
+height = 1.85
+
+[sub_resource type="BoxMesh" id="BoxMesh_legs"]
+material = ExtResource("7_burlap_dark")
+size = Vector3(0.36, 0.86, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_pelvis"]
+material = ExtResource("7_burlap_dark")
+size = Vector3(0.42, 0.18, 0.26)
+
+[sub_resource type="BoxMesh" id="BoxMesh_torso"]
+material = ExtResource("5_burlap")
+size = Vector3(0.52, 0.55, 0.3)
+
+[sub_resource type="BoxMesh" id="BoxMesh_head"]
+material = ExtResource("6_burlap_light")
+size = Vector3(0.3, 0.3, 0.28)
+
+[sub_resource type="BoxMesh" id="BoxMesh_eyes"]
+material = ExtResource("9_eyes")
+size = Vector3(0.2, 0.045, 0.02)
+
+[sub_resource type="BoxMesh" id="BoxMesh_arm"]
+material = ExtResource("5_burlap")
+size = Vector3(0.13, 0.55, 0.13)
+
+[sub_resource type="BoxMesh" id="BoxMesh_club"]
+material = ExtResource("8_wood")
+size = Vector3(0.14, 0.65, 0.14)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_hitbox"]
+size = Vector3(1.0, 1.3, 1.3)
+
+[sub_resource type="Animation" id="Animation_reset"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig:position")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0.6981, 0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_idle"]
+resource_name = "idle"
+length = 1.6
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(-2, -2, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0.035, 0, 0), Vector3(0, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.8, 1.6),
+"transitions": PackedFloat32Array(-2, -2, 1),
+"update": 0,
+"values": [Vector3(0.6981, 0, 0), Vector3(0.7854, 0, 0), Vector3(0.6981, 0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_walk"]
+resource_name = "walk"
+length = 0.6
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.15, 0.3, 0.45, 0.6),
+"transitions": PackedFloat32Array(-2, -2, -2, -2, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0, 0, 0.06), Vector3(0, 0, 0), Vector3(0, 0, -0.06), Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(-0.1, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.15, 0.3, 0.45, 0.6),
+"transitions": PackedFloat32Array(-2, -2, -2, -2, 1),
+"update": 0,
+"values": [Vector3(0.6981, 0, 0), Vector3(0.8727, 0, 0), Vector3(0.6981, 0, 0), Vector3(0.5585, 0, 0), Vector3(0.6981, 0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_windup"]
+resource_name = "windup"
+length = 0.7
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.45, 0.7),
+"transitions": PackedFloat32Array(0.4, 1, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0.28, 0.12, 0), Vector3(0.33, 0.14, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.45, 0.7),
+"transitions": PackedFloat32Array(0.5, 1, 1),
+"update": 0,
+"values": [Vector3(0.6981, 0, 0), Vector3(3.6652, 0, 0.2), Vector3(3.7699, 0, 0.25)]
+}
+
+[sub_resource type="Animation" id="Animation_strike"]
+resource_name = "strike"
+length = 0.2
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.2),
+"transitions": PackedFloat32Array(2, 1, 1),
+"update": 0,
+"values": [Vector3(0.33, 0.14, 0), Vector3(-0.38, -0.15, 0), Vector3(-0.34, -0.12, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.1, 0.2),
+"transitions": PackedFloat32Array(2, 1, 1),
+"update": 0,
+"values": [Vector3(3.7699, 0, 0.25), Vector3(1.309, 0, 0), Vector3(1.2217, 0, 0)]
+}
+tracks/3/type = "method"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Hitbox")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0.02, 0.18),
+"transitions": PackedFloat32Array(1, 1),
+"values": [{
+"args": [],
+"method": &"begin_swing"
+}, {
+"args": [],
+"method": &"end_swing"
+}]
+}
+
+[sub_resource type="Animation" id="Animation_recover"]
+resource_name = "recover"
+length = 0.8
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.35, 0.8),
+"transitions": PackedFloat32Array(1, -2, 1),
+"update": 0,
+"values": [Vector3(-0.34, -0.12, 0), Vector3(-0.3, -0.1, 0), Vector3(0, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.35, 0.8),
+"transitions": PackedFloat32Array(1, -2, 1),
+"update": 0,
+"values": [Vector3(1.2217, 0, 0), Vector3(1.1868, 0, 0), Vector3(0.6981, 0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_flinch"]
+resource_name = "flinch"
+length = 0.3
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.06, 0.3),
+"transitions": PackedFloat32Array(0.5, -2, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0.12, 0, 0.05), Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.06, 0.3),
+"transitions": PackedFloat32Array(0.5, -2, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0.42, 0, -0.1), Vector3(0, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.06, 0.3),
+"transitions": PackedFloat32Array(0.5, -2, 1),
+"update": 0,
+"values": [Vector3(0.6981, 0, 0), Vector3(0.5236, 0, 0.3), Vector3(0.6981, 0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_die"]
+resource_name = "die"
+length = 1.2
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.12, 0.75, 0.9, 1.05),
+"transitions": PackedFloat32Array(1, 2.5, 0.5, 2, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(-0.08, 0, 0), Vector3(1.5708, 0, 0.1), Vector3(1.42, 0, 0.1), Vector3(1.5708, 0, 0.1)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig:position")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.75, 1.05),
+"transitions": PackedFloat32Array(1, 1, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0, 0.14, 0), Vector3(0, 0.14, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.75),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0.25, 0, 0)]
+}
+tracks/3/type = "value"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = {
+"times": PackedFloat32Array(0, 0.75),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [Vector3(0.6981, 0, 0), Vector3(2.4435, 0, 0)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_enemy"]
+_data = {
+&"RESET": SubResource("Animation_reset"),
+&"die": SubResource("Animation_die"),
+&"flinch": SubResource("Animation_flinch"),
+&"idle": SubResource("Animation_idle"),
+&"recover": SubResource("Animation_recover"),
+&"strike": SubResource("Animation_strike"),
+&"walk": SubResource("Animation_walk"),
+&"windup": SubResource("Animation_windup")
+}
+
+[sub_resource type="ViewportTexture" id="ViewportTexture_hp"]
+resource_local_to_scene = true
+viewport_path = NodePath("HealthBar3D/SubViewport")
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hp_bg"]
+bg_color = Color(0.165, 0.031, 0.047, 0.9)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hp_fill"]
+bg_color = Color(0.722, 0.161, 0.122, 1)
+
+[node name="Enemy" type="CharacterBody3D" groups=["enemies"]]
+collision_layer = 4
+collision_mask = 3
+script = ExtResource("1_enemy")
+data = ExtResource("4_data")
+flash_material = SubResource("StandardMaterial3D_flash")
+
+[node name="BodyShape" type="CollisionShape3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 0.925, 0)
+shape = SubResource("CapsuleShape3D_body")
+
+[node name="Health" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("2_health")
+
+[node name="Rig" type="Node3D" parent="."]
+
+[node name="Legs" type="MeshInstance3D" parent="Rig"]
+position = Vector3(0, 0.43, 0)
+material_overlay = SubResource("StandardMaterial3D_flash")
+mesh = SubResource("BoxMesh_legs")
+
+[node name="Body" type="MeshInstance3D" parent="Rig"]
+position = Vector3(0, 0.94, 0)
+material_overlay = SubResource("StandardMaterial3D_flash")
+mesh = SubResource("BoxMesh_pelvis")
+
+[node name="Torso" type="MeshInstance3D" parent="Rig/Body"]
+position = Vector3(0, 0.36, 0)
+material_overlay = SubResource("StandardMaterial3D_flash")
+mesh = SubResource("BoxMesh_torso")
+
+[node name="Head" type="MeshInstance3D" parent="Rig/Body"]
+position = Vector3(0, 0.8, 0)
+material_overlay = SubResource("StandardMaterial3D_flash")
+mesh = SubResource("BoxMesh_head")
+
+[node name="Eyes" type="MeshInstance3D" parent="Rig/Body/Head"]
+position = Vector3(0, 0.02, -0.142)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_eyes")
+
+[node name="ArmL" type="MeshInstance3D" parent="Rig/Body"]
+position = Vector3(-0.34, 0.31, 0)
+rotation = Vector3(0.15, 0, -0.12)
+material_overlay = SubResource("StandardMaterial3D_flash")
+mesh = SubResource("BoxMesh_arm")
+
+[node name="ArmPivot" type="Node3D" parent="Rig/Body"]
+position = Vector3(0.34, 0.58, 0)
+rotation = Vector3(0.6981, 0, 0)
+
+[node name="Arm" type="MeshInstance3D" parent="Rig/Body/ArmPivot"]
+position = Vector3(0, -0.27, 0)
+material_overlay = SubResource("StandardMaterial3D_flash")
+mesh = SubResource("BoxMesh_arm")
+
+[node name="Club" type="MeshInstance3D" parent="Rig/Body/ArmPivot/Arm"]
+position = Vector3(0, -0.55, 0)
+material_overlay = SubResource("StandardMaterial3D_flash")
+mesh = SubResource("BoxMesh_club")
+
+[node name="Hitbox" type="Area3D" parent="."]
+unique_name_in_owner = true
+collision_layer = 0
+collision_mask = 2
+monitoring = false
+monitorable = false
+script = ExtResource("3_hitbox")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Hitbox"]
+position = Vector3(0, 1, -1.05)
+shape = SubResource("BoxShape3D_hitbox")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+unique_name_in_owner = true
+libraries = {
+&"": SubResource("AnimationLibrary_enemy")
+}
+
+[node name="TellFlash" type="OmniLight3D" parent="."]
+unique_name_in_owner = true
+visible = false
+position = Vector3(0, 1.7, -0.5)
+light_color = Color(1, 0.18, 0.1, 1)
+light_energy = 4.0
+omni_range = 3.5
+
+[node name="HealthBar3D" type="Sprite3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 2.2, 0)
+cast_shadow = 0
+pixel_size = 0.005
+billboard = 1
+texture_filter = 0
+texture = SubResource("ViewportTexture_hp")
+
+[node name="SubViewport" type="SubViewport" parent="HealthBar3D"]
+disable_3d = true
+transparent_bg = true
+size = Vector2i(128, 10)
+render_target_update_mode = 4
+
+[node name="HPBar" type="ProgressBar" parent="HealthBar3D/SubViewport"]
+unique_name_in_owner = true
+offset_right = 128.0
+offset_bottom = 10.0
+theme_override_styles/background = SubResource("StyleBoxFlat_hp_bg")
+theme_override_styles/fill = SubResource("StyleBoxFlat_hp_fill")
+value = 100.0
+show_percentage = false
+
+[node name="GruntSfx" type="AudioStreamPlayer3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 1.6, 0)
+stream = ExtResource("11_grunt")
+
+[node name="SwingSfx" type="AudioStreamPlayer3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 1.4, -0.5)
+stream = ExtResource("12_whoosh")
+pitch_scale = 0.7
+
+[node name="DeathSfx" type="AudioStreamPlayer3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 1.4, 0)
+stream = ExtResource("11_grunt")
+pitch_scale = 0.6
