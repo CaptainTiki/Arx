@@ -17,6 +17,10 @@ light_color = Color(1, 0.66, 0.36, 1)
 light_energy = 2.0
 shadow_enabled = true
 omni_range = 7.0
+distance_fade_enabled = true
+distance_fade_begin = 24.0
+distance_fade_shadow = 16.0
+distance_fade_length = 6.0
 script = ExtResource("1_torch")
 
 [node name="Sconce" type="MeshInstance3D" parent="."]

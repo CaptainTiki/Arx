@@ -44,6 +44,11 @@ var _dead: bool = false
 var _interact_target: Node3D
 var _interact_prompt: String = ""
 
+## Read-only access for scene-level debug keys (Main reads regenerate_pressed).
+var intent: PlayerIntent:
+	get:
+		return _intent
+
 
 func _ready() -> void:
 	_hud.bind(_health, _stamina)
@@ -109,6 +114,16 @@ func swap_weapon(pickup: Pickup) -> void:
 
 func is_dead() -> bool:
 	return _dead
+
+
+## Teleports to a spawn: position and yaw from `xform`, level gaze, no leftover momentum.
+func place_at(xform: Transform3D) -> void:
+	global_position = xform.origin
+	rotation.y = xform.basis.get_euler().y
+	_head.rotation.x = 0.0
+	velocity = Vector3.ZERO
+	_move_velocity = Vector3.ZERO
+	_lunge_time = _lunge_duration
 
 
 func _move(delta: float) -> void:

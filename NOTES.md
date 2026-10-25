@@ -1,12 +1,69 @@
-# Steps 1–2 — One Room, One Enemy, Swing & Block, Pickups
+# Steps 1–3 — Swing & Block, Pickups, Generated Dungeon
 
-Open in Godot 4.7, press F5. Main scene: `res://main/Main.tscn`.
+Open in Godot 4.7, press F5. Main scene: `res://main/Main.tscn`. The step-1 room lives on as `res://tests/CombatArena.tscn`, the fixture for the combat smoke test; you can also open it and F6 it to fight one grunt in a known room.
 
-**Controls:** WASD move · Shift sprint · LMB swing · RMB block (hold) · E take · R restart · Esc frees the mouse (click to recapture).
+**Controls:** WASD move · Shift sprint · LMB swing · RMB block (hold) · E take · R restart · F5 new dungeon · Esc frees the mouse (click to recapture).
 
-You start with the Rusty Sword. The Woodcutter's Axe lies front-left and the Rusted Dagger front-right; a spare sword sits behind the spawn point. Look at one within 2.5 m and press E. It goes into your hand, and your old weapon lies where it was.
+Every Play builds a different floor of about 10 hand-built rooms, from a start room (you, plus a spare sword) to a glowing exit pad. The output log prints `Dungeon seed N`; put N in `DungeonGenerator.seed_value` to get that exact floor again. F5 throws the floor away and builds a new one. Weapons lie where spawn markers put them: the axe in the pillar room and the treasure room, the dagger in the treasure room. Look at one within 2.5 m and press E. It goes into your hand, and your old weapon lies where it was.
 
-The grunt wakes up when you get within 4 m. It walks in, rears back with a red flash and a grunt (0.7 s, turning at most 180°/s to follow you), then lunges 0.9 m into the smash. After that it stands still, without turning, for 0.8 s of recovery plus a 1.5 s cooldown. Block the smash, release, and hit it. R resets the room (and your weapon) to try another weapon on a fresh grunt.
+Grunts wake up when you get within 4 m. Each walks in, rears back with a red flash and a grunt (0.7 s, turning at most 180°/s to follow you), then lunges 0.9 m into the smash. After that it stands still, without turning, for 0.8 s of recovery plus a 1.5 s cooldown.
+
+---
+
+## Step 3: dungeon
+
+### Generator tunables — `Main.tscn → DungeonGenerator`
+
+| Knob | Default | What it does |
+|---|---|---|
+| `catalog` | `dungeon/catalog.tres` | Room pool: its `rooms` list plus every `.tscn` in `scan_folder` (`res://dungeon/rooms`) |
+| `target_rooms` | 10 | Rooms per floor, START and EXIT included. The last two are forced TREASURE, then EXIT. |
+| `max_attempts` | 200 | Overlap failures allowed before a layout is abandoned and restarted |
+| `seed_value` | 0 | 0 = random every generate. Anything else rebuilds the same floor (restarts derive from it too). |
+| `corridor_chance` | 0.3 | Chance the next normal room is a corridor rather than combat |
+| `max_corridor_chain` | 2 | Corridors in a row, at most |
+| `recency_bias` | 2.0 | Which open door to grow from: 1 = any (bushy), higher = the newest (snakier, more hallway) |
+| `door_retry_limit` | 4 | A door that fails this many placements is given up on and plugged |
+| `max_restarts` | 5 | Fresh-seed restarts when no exit was placed, then it errors loudly |
+
+Per room, on the scene root (`Room`): `type`, `weight` (pick chance within its type, default 1) and `footprint`.
+
+### What 1000 seeds look like (`tools/dungeon_tests.gd`)
+
+Your playtest questions, answered over seeds 1–1000 at the defaults:
+
+- **Overlaps:** none.
+- **Exit failures:** 98.5% of seeds place an exit first try, and the rest need one restart. None needed more, so "1 in 10" is nowhere close.
+- **Dead ends:** about 3.9 doors per floor end up plugged. About 0.4 of the roughly 2.1 corridors per floor run into a plug (about 1 floor in 2.5 has one). That's the "looks stupid" case to watch.
+- **Floor or hallway:** the deepest room sits about 6.4 steps from the start of 10, and the exit about 5.4. No floor in the batch was a single chain. The 3- and 4-door combat rooms branch it, so it reads more floor than hallway. Footprint is about 86 cells (about 14 × 15 cells, 56 × 62 m). Raise `recency_bias` for snakier floors, lower it toward 1 for bushier ones.
+
+### Rotation convention
+
+`turns` = **clockwise** quarter turns seen from above, with −Z as north. A placed room gets `rotation_degrees.y = -90 × turns`, and its node is offset so the rotated footprint's min corner lands on `grid_origin`. One turn sends doors N → E → S → W, so a door's `dir` is also its clockwise turns from north. A `(w, h)` footprint becomes `(h, w)`, and cell `(x, z)` becomes `(h-1-z, x)`; see `DungeonGenerator.rotate_cell()`. The test checks `rotate_cell` against the actual `Transform3D` for every cell of every footprint up to 5 × 5 at every turn, and checks every catalog door at every rotation.
+
+Grid: 4 m cells; cell `(x, z)` sits at world `(4x, 0, 4z)`. A door's marker sits on the footprint boundary at the center of a cell edge; `Door.cell` is the footprint cell it belongs to. Connecting door D to candidate door E picks the one rotation that makes E face D's opposite, then sets `grid_origin` so E's cell is the cell across D's edge. That's the only connectivity rule: no loops, no extra connections.
+
+### Authoring a new room
+
+1. **Duplicate** any scene in `res://dungeon/rooms/` and set `type` / `weight` / `footprint` on its root. Anything in that folder is in the catalog automatically.
+2. **Move CSG boxes** under `Geometry`. `Floor` and `Ceiling` cover the footprint. Walls sit *inside* the footprint edge, 0.3 m thick, so neighbours end up back to back. Each door needs a 2 × 3 m subtraction box (`operation = Subtraction`) through its wall; the existing `Doorway*` boxes are ready to move.
+3. **Move markers.** A `Door` goes on the footprint edge at a cell-edge center: one coordinate on the boundary (0 or 4 × cells), the other at 4k + 2. Set its `dir`; the marker turns itself to face out. `SpawnPoint`s go anywhere inside the footprint: `ENEMY` needs `fixed_scene`, `WEAPON` needs `fixed_item`, and START needs exactly one `PLAYER`.
+
+The Room root shows editor warnings, refreshed as you drag markers. It warns when a door is off an edge center, a door has no doorway cutter within 0.5 m, a spawn is outside the footprint, a spawn is missing its scene or item, or a START room has no player spawn. The generator skips any room with warnings and logs why.
+
+**Doorway size:** the handoff says "2-cell-wide opening". Cells are 4 m and doors sit at the center of a single cell edge, so I read that as **2 m** wide, 3 m tall. Corridors use the same 2 m doorway rather than a fully open end, so one shared `DoorPlug.tscn` (2.1 × 3.05 m) fits every unused door.
+
+### Building blocks
+
+| File | Role |
+|---|---|
+| `dungeon/room.gd` (`Room`, @tool) | Room contract, `get_doors()`, `get_spawn_points()`, authoring checks |
+| `dungeon/door.gd` (`Door`, @tool) | `dir`, `plug_scene`, `cell`, `used`, `opposite()`, plus direction/offset/edge helpers |
+| `dungeon/spawn_point.gd` (`SpawnPoint`, @tool) | `kind`, `fixed_scene`, `fixed_item` |
+| `dungeon/room_catalog.gd` (`RoomCatalog`) | `rooms` plus `scan_folder` |
+| `dungeon/dungeon_generator.gd` (`DungeonGenerator`) | Plan (pure data) → build (rooms, plugs, spawns) |
+| `dungeon/DoorPlug.tscn` | Default wall chunk, added as a child of each unused door marker |
+| `dungeon/exit_trigger.gd` (`ExitTrigger`) | Prints `exit reached` |
 
 ---
 
@@ -172,8 +229,8 @@ The enemy animations (`windup`, `strike`, `recover`, `flinch`) are played time-s
 | `Player.tscn → WeaponRig/Hitbox/HitboxShape` | Width 0.6 and height 0.5 are authored here, as is the near edge 0.15 m in front of the camera. Length comes from `attack_reach` on equip. The sword reaches 1.55 m against a visible tip of about 1.3 m. |
 | `Player.tscn → WeaponRig/AnimationPlayer` | Viewmodel poses for `swing` (normalized 1 s), `block_raise`, `block_lower`, `block_impact`, `equip` (0.3 s). Tracks drive `ViewPivot/SwordMesh`. |
 | SFX nodes | `WhooshSfx` -6 dB, `ImpactSfx` 0 dB, `ClangSfx` -3 dB, `HurtSfx` -4 dB, enemy `SwingSfx` pitch 0.7, `DeathSfx` pitch 0.6 |
-| `world/Torch.tscn` root | `light_energy` 2.0, `omni_range` 7.0, `flicker_amount` 0.15, `flicker_speed` 7 |
-| `Main.tscn → Room/WorldEnvironment` | ambient 0.6, fog density 0.025 |
+| `world/Torch.tscn` root | `light_energy` 2.0, `omni_range` 7.0, `flicker_amount` 0.15, `flicker_speed` 7. `distance_fade` begin 24 m (shadows off past 16 m), so a floor full of torches stays cheap. |
+| `Main.tscn → WorldEnvironment` | ambient 0.6, fog density 0.025 (same in `tests/CombatArena.tscn`) |
 
 ---
 
@@ -196,7 +253,7 @@ The enemy animations (`windup`, `strike`, `recover`, `flinch`) are played time-s
 | 3 | enemy | Enemy body (mask: world + player). Player hitbox masks this layer. |
 | 4 | interactable | Pickups (`StaticBody3D`, mask none). Only `InteractRay` masks this layer; bodies walk through them. |
 
-Hitbox areas have no layer of their own. The enemy hitbox's `BoxShape3D` is `resource_local_to_scene`, so resizing it from `attack_reach` doesn't leak into other enemy instances.
+Hitbox areas and the exit room's `ExitTrigger` (which masks the player layer) have no layer of their own. Room geometry, including door plugs, is on layer 1. The enemy hitbox's `BoxShape3D` is `resource_local_to_scene`, so resizing it from `attack_reach` doesn't leak into other enemy instances.
 
 ### Palette
 
@@ -224,7 +281,9 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 | Command (from the project root) | What it does |
 |---|---|
 | `godot --headless --path . --script res://tools/generate_placeholder_assets.gd` | Regenerates the palette PNG, the synthesized placeholder SFX, the weapon meshes and the 32×32 weapon icons (deterministic) |
-| `godot --headless --path . --script res://tools/combat_smoke_test.gd` | Drives the real scene with input events, in two parts. **Part A (weapons):** the prompt, interact being blocked while blocking, swap-in-place both ways, an equip during a swing waiting for IDLE, and a probe per weapon. The probe measures swing length, the hitbox open/close times, lunge distance, stamina spent and damage dealt against that weapon's data. **Part B (fresh scene, grunt):** data applied, strike lunge, block, the windup turn cap, facing and position locked through RECOVER/COOLDOWN, hit-and-back-off caught, an early retreat escaping, and a punish to the kill. Exit code 0 means pass. |
+| `godot --headless --path . --script res://tools/dungeon_tests.gd [-- 1000 20]` | Generator checks. It tests `rotate_cell` against real transforms, every catalog door at every rotation, that the authoring warnings fire on broken rooms, and a batch of seeded layouts (stats as above). It then does real builds, where every connected door must meet its partner, every other door must be plugged, and spawn counts and player placement must match. The arguments are batch size and build count. Exit code 0 means pass. |
+| `godot --path . --script res://tools/capture_dungeon.gd -- out.png 1 2 3` | Opens a window and renders a top-down view (ceilings hidden) and the view from spawn for each seed given |
+| `godot --headless --path . --script res://tools/combat_smoke_test.gd` | Drives `tests/CombatArena.tscn` (the step-1 room, so it stays deterministic) with input events, in two parts. **Part A (weapons):** the prompt, interact being blocked while blocking, swap-in-place both ways, an equip during a swing waiting for IDLE, and a probe per weapon. The probe measures swing length, the hitbox open/close times, lunge distance, stamina spent and damage dealt against that weapon's data. **Part B (fresh scene, grunt):** data applied, strike lunge, block, the windup turn cap, facing and position locked through RECOVER/COOLDOWN, hit-and-back-off caught, an early retreat escaping, and a punish to the kill. Exit code 0 means pass. |
 | `godot --path . --script res://tools/capture_views.gd -- out.png` | Opens a window and renders a contact sheet: pickups on the floor with the prompt, each weapon at rest, mid-swing and blocking, then the hit puff and block spark |
 
 ---
@@ -243,6 +302,13 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - **Small additions from step 1:** a `walk` loop for the enemy, an R restart, auto-restart on player death, the 0.15 s attack buffer, a 0.035 s hitstop on block impact, and a billboard HP bar.
 - **The block is active the moment RMB goes down.** `block_raise` is only cosmetic.
 - **`untyped_declaration` is set to Error** in project settings, so the static-typing rule is enforced.
+- **The generator plans first, then builds.** The algorithm is the handoff's, but it runs on data (`plan_layout(seed)`); only the finished plan is instantiated. Restarts cost nothing, and the batch test can run thousands of seeds without building anything. The one off-tree instance per catalog room (read for metadata, then freed) is the only node it creates and doesn't place.
+- **Extra pruning on open doors:** a door whose neighbour cell is already taken is dropped immediately (it can never connect). A door that fails `door_retry_limit` placements is also dropped. Both end up plugged. Restart seeds are `seed + n × 7919`, so a fixed `seed_value` reproduces the restarts too.
+- **The catalog also scans a folder** (`scan_folder`), so authoring a room is just "duplicate a scene" with no data file to touch. The explicit `rooms` list still works for rooms kept elsewhere.
+- **Door markers rotate themselves** from `dir` (−Z out through the doorway). Plugs are added as children of the unused door marker, so they sit at its exact transform and are freed with the room.
+- **`Spawned` is pre-authored** under `Dungeon` in `Main.tscn` (nodes aren't created at runtime). Regenerating frees every other `Dungeon` child and empties `Spawned`.
+- **The HUD stays inside `Player.tscn`** rather than becoming a `Main` child. Player drives it through `%HUD`, and moving it would only add wiring.
+- **The Player starts disabled** (`process_mode` Disabled in `Main.tscn`). `Main._ready()` generates the floor, places the player, then enables it. F5 goes through `PlayerIntent.regenerate_pressed`, read by `Main` via `Player.intent`, so `Input` is still only touched in one place.
 
 ## Known limitations
 
@@ -250,3 +316,6 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - The viewmodel is world-scale geometry on the camera, so it clips into the grunt at point-blank range and into walls. With `strike_lunge` this happens after every strike. Fix with a viewmodel render layer or camera, or a depth-squash shader.
 - The hit-puff contact point is the hitbox/body midpoint. Within about 1 m it lands inside the body.
 - The SFX are synthesized placeholders.
+- Torchlight can bleed through walls into a neighbouring room once a torch's shadow fades out (past 16 m). Out of scope for step 3.
+- The graph is a tree: no loops, no locked doors. Roughly 0.4 corridors per floor dead-end into a plug.
+- The generated room scenes list every shared resource in their headers, including ones a given room doesn't use. Godot drops the unused ones the first time you save each room in the editor.

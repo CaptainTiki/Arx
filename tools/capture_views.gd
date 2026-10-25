@@ -20,7 +20,7 @@ func _initialize() -> void:
 func _run() -> void:
 	var args: PackedStringArray = OS.get_cmdline_user_args()
 	var out_path: String = args[0] if args.size() > 0 else "user://capture_views.png"
-	var main: Node = (load("res://main/Main.tscn") as PackedScene).instantiate()
+	var main: Node = (load("res://tests/CombatArena.tscn") as PackedScene).instantiate()
 	root.add_child(main)
 	current_scene = main
 	var player: Player = main.get_node("Player") as Player

@@ -1,20 +1,15 @@
 [gd_scene format=3]
 
-[ext_resource type="Material" path="res://art/materials/stone_floor.tres" id="1_floor"]
-[ext_resource type="Material" path="res://art/materials/stone_wall.tres" id="2_wall"]
-[ext_resource type="Material" path="res://art/materials/stone_ceiling.tres" id="3_ceiling"]
-[ext_resource type="PackedScene" path="res://world/Torch.tscn" id="4_torch"]
+[ext_resource type="Script" path="res://main/main.gd" id="1_main"]
+[ext_resource type="Script" path="res://dungeon/dungeon_generator.gd" id="2_generator"]
+[ext_resource type="Resource" path="res://dungeon/catalog.tres" id="3_catalog"]
+[ext_resource type="PackedScene" path="res://items/Pickup.tscn" id="4_pickup"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="5_player"]
-[ext_resource type="PackedScene" path="res://enemy/Enemy.tscn" id="6_enemy"]
 [ext_resource type="Script" path="res://fx/fx_pool.gd" id="7_fx"]
 [ext_resource type="PackedScene" path="res://fx/HitPuff.tscn" id="8_hit_puff"]
 [ext_resource type="PackedScene" path="res://fx/BlockSpark.tscn" id="9_block_spark"]
-[ext_resource type="PackedScene" path="res://items/Pickup.tscn" id="10_pickup"]
-[ext_resource type="Resource" path="res://weapons/rusty_sword.tres" id="11_sword"]
-[ext_resource type="Resource" path="res://weapons/woodcutters_axe.tres" id="12_axe"]
-[ext_resource type="Resource" path="res://weapons/rusted_dagger.tres" id="13_dagger"]
 
-[sub_resource type="Environment" id="Environment_room"]
+[sub_resource type="Environment" id="Environment_dungeon"]
 background_mode = 1
 background_color = Color(0.02, 0.018, 0.026, 1)
 ambient_light_source = 2
@@ -26,59 +21,23 @@ fog_light_color = Color(0.05, 0.045, 0.06, 1)
 fog_density = 0.025
 
 [node name="Main" type="Node3D"]
+script = ExtResource("1_main")
 
-[node name="Room" type="Node3D" parent="."]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_dungeon")
 
-[node name="Floor" type="CSGBox3D" parent="Room"]
-position = Vector3(0, -0.1, 0)
-use_collision = true
-size = Vector3(12.6, 0.2, 12.6)
-material = ExtResource("1_floor")
+[node name="Dungeon" type="Node3D" parent="."]
 
-[node name="Ceiling" type="CSGBox3D" parent="Room"]
-position = Vector3(0, 4.1, 0)
-use_collision = true
-size = Vector3(12.6, 0.2, 12.6)
-material = ExtResource("3_ceiling")
+[node name="Spawned" type="Node3D" parent="Dungeon"]
 
-[node name="WallNorth" type="CSGBox3D" parent="Room"]
-position = Vector3(0, 2, -6.15)
-use_collision = true
-size = Vector3(12.6, 4, 0.3)
-material = ExtResource("2_wall")
-
-[node name="WallSouth" type="CSGBox3D" parent="Room"]
-position = Vector3(0, 2, 6.15)
-use_collision = true
-size = Vector3(12.6, 4, 0.3)
-material = ExtResource("2_wall")
-
-[node name="WallEast" type="CSGBox3D" parent="Room"]
-position = Vector3(6.15, 2, 0)
-use_collision = true
-size = Vector3(0.3, 4, 12)
-material = ExtResource("2_wall")
-
-[node name="WallWest" type="CSGBox3D" parent="Room"]
-position = Vector3(-6.15, 2, 0)
-use_collision = true
-size = Vector3(0.3, 4, 12)
-material = ExtResource("2_wall")
-
-[node name="TorchEastFar" parent="Room" instance=ExtResource("4_torch")]
-position = Vector3(5.65, 2.4, -2.5)
-
-[node name="TorchWestFar" parent="Room" instance=ExtResource("4_torch")]
-position = Vector3(-5.65, 2.4, -2.5)
-
-[node name="TorchEastNear" parent="Room" instance=ExtResource("4_torch")]
-position = Vector3(5.65, 2.4, 3)
-
-[node name="TorchWestNear" parent="Room" instance=ExtResource("4_torch")]
-position = Vector3(-5.65, 2.4, 3)
-
-[node name="WorldEnvironment" type="WorldEnvironment" parent="Room"]
-environment = SubResource("Environment_room")
+[node name="DungeonGenerator" type="Node" parent="." node_paths=PackedStringArray("dungeon", "spawned", "player")]
+unique_name_in_owner = true
+script = ExtResource("2_generator")
+catalog = ExtResource("3_catalog")
+dungeon = NodePath("../Dungeon")
+spawned = NodePath("../Dungeon/Spawned")
+player = NodePath("../Player")
+pickup_scene = ExtResource("4_pickup")
 
 [node name="FX" type="Node3D" parent="."]
 script = ExtResource("7_fx")
@@ -105,27 +64,7 @@ unique_name_in_owner = true
 
 [node name="BlockSpark4" parent="FX/BlockSparks" instance=ExtResource("9_block_spark")]
 
-[node name="Pickups" type="Node3D" parent="."]
-
-[node name="AxePickup" parent="Pickups" instance=ExtResource("10_pickup")]
-position = Vector3(-1.7, 0, 1.8)
-rotation = Vector3(0, 0.5236, 0)
-item = ExtResource("12_axe")
-
-[node name="DaggerPickup" parent="Pickups" instance=ExtResource("10_pickup")]
-position = Vector3(1.7, 0, 1.8)
-rotation = Vector3(0, -0.6981, 0)
-item = ExtResource("13_dagger")
-
-[node name="SwordPickup" parent="Pickups" instance=ExtResource("10_pickup")]
-position = Vector3(0, 0, 4.6)
-rotation = Vector3(0, 1.3963, 0)
-item = ExtResource("11_sword")
-
 [node name="Player" parent="." node_paths=PackedStringArray("fx") instance=ExtResource("5_player")]
-position = Vector3(0, 0, 3)
+unique_name_in_owner = true
+process_mode = 4
 fx = NodePath("../FX")
-
-[node name="Enemy" parent="." node_paths=PackedStringArray("target") instance=ExtResource("6_enemy")]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -2)
-target = NodePath("../Player")

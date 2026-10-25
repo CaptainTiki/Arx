@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[node name="OverheadCamera" type="Camera3D"]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 80, 0)
+projection = 1
+size = 70.0
+far = 200.0

@@ -23,7 +23,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	var main: Node = (load("res://main/Main.tscn") as PackedScene).instantiate()
+	var main: Node = (load("res://tests/CombatArena.tscn") as PackedScene).instantiate()
 	root.add_child(main)
 	current_scene = main
 	await _seconds(0.5)

@@ -1,0 +1,91 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://dungeon/room.gd" id="1_room"]
+[ext_resource type="Script" path="res://dungeon/door.gd" id="2_door"]
+[ext_resource type="Script" path="res://dungeon/spawn_point.gd" id="3_spawn"]
+[ext_resource type="Material" path="res://art/materials/stone_floor.tres" id="4_floor"]
+[ext_resource type="Material" path="res://art/materials/stone_wall.tres" id="5_wall"]
+[ext_resource type="Material" path="res://art/materials/stone_ceiling.tres" id="6_ceiling"]
+[ext_resource type="PackedScene" path="res://world/Torch.tscn" id="7_torch"]
+[ext_resource type="Material" path="res://art/materials/wood.tres" id="8_wood"]
+[ext_resource type="PackedScene" path="res://enemy/Enemy.tscn" id="9_enemy"]
+[ext_resource type="Resource" path="res://weapons/rusty_sword.tres" id="10_sword"]
+[ext_resource type="Resource" path="res://weapons/woodcutters_axe.tres" id="11_axe"]
+[ext_resource type="Resource" path="res://weapons/rusted_dagger.tres" id="12_dagger"]
+
+[node name="StartRoom" type="Node3D"]
+script = ExtResource("1_room")
+type = 0
+footprint = Vector2i(3, 3)
+
+[node name="Geometry" type="Node3D" parent="."]
+
+[node name="Floor" type="CSGBox3D" parent="Geometry"]
+position = Vector3(6, -0.1, 6)
+use_collision = true
+size = Vector3(12, 0.2, 12)
+material = ExtResource("4_floor")
+
+[node name="Ceiling" type="CSGBox3D" parent="Geometry"]
+position = Vector3(6, 4.1, 6)
+size = Vector3(12, 0.2, 12)
+material = ExtResource("6_ceiling")
+
+[node name="Walls" type="CSGCombiner3D" parent="Geometry"]
+use_collision = true
+
+[node name="WallNorth" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(6, 2, 0.15)
+size = Vector3(12, 4, 0.3)
+material = ExtResource("5_wall")
+
+[node name="WallSouth" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(6, 2, 11.85)
+size = Vector3(12, 4, 0.3)
+material = ExtResource("5_wall")
+
+[node name="WallWest" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(0.15, 2, 6)
+size = Vector3(0.3, 4, 12)
+material = ExtResource("5_wall")
+
+[node name="WallEast" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(11.85, 2, 6)
+size = Vector3(0.3, 4, 12)
+material = ExtResource("5_wall")
+
+[node name="DoorwayS" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(6, 1.5, 11.85)
+operation = 2
+size = Vector3(2, 3, 0.5)
+material = ExtResource("5_wall")
+
+[node name="Lights" type="Node3D" parent="."]
+
+[node name="TorchW" parent="Lights" instance=ExtResource("7_torch")]
+position = Vector3(0.35, 2.4, 6)
+
+[node name="TorchE" parent="Lights" instance=ExtResource("7_torch")]
+position = Vector3(11.65, 2.4, 6)
+
+[node name="Doors" type="Node3D" parent="."]
+
+[node name="DoorS" type="Marker3D" parent="Doors"]
+position = Vector3(6, 0, 12)
+script = ExtResource("2_door")
+dir = 2
+
+[node name="Spawns" type="Node3D" parent="."]
+
+[node name="Player" type="Marker3D" parent="Spawns"]
+position = Vector3(6, 0, 4)
+rotation = Vector3(0, 3.14159, 0)
+script = ExtResource("3_spawn")
+kind = 2
+
+[node name="Sword" type="Marker3D" parent="Spawns"]
+position = Vector3(3.5, 0, 7.5)
+rotation = Vector3(0, 0.6, 0)
+script = ExtResource("3_spawn")
+kind = 1
+fixed_item = ExtResource("10_sword")

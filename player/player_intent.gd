@@ -13,8 +13,11 @@ var sprint_held: bool = false
 ## E went down since the last physics frame.
 var interact_pressed: bool = false
 var restart_pressed: bool = false
+## Debug: F5 rebuilds the dungeon.
+var regenerate_pressed: bool = false
 
 var _look_accum: Vector2 = Vector2.ZERO
+var _regenerate_latched: bool = false
 var _attack_latched: bool = false
 var _interact_latched: bool = false
 var _restart_latched: bool = false
@@ -43,6 +46,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_interact_latched = true
 	elif event.is_action_pressed(&"restart"):
 		_restart_latched = true
+	elif event.is_action_pressed(&"regenerate"):
+		_regenerate_latched = true
 
 
 func _process(_delta: float) -> void:
@@ -61,6 +66,8 @@ func _physics_process(_delta: float) -> void:
 	_interact_latched = false
 	restart_pressed = _restart_latched
 	_restart_latched = false
+	regenerate_pressed = _regenerate_latched
+	_regenerate_latched = false
 
 
 func _capture_mouse() -> void:

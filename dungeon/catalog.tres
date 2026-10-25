@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="RoomCatalog" format=3]
+
+[ext_resource type="Script" path="res://dungeon/room_catalog.gd" id="1_catalog"]
+[ext_resource type="PackedScene" path="res://dungeon/rooms/StartRoom.tscn" id="2_start"]
+[ext_resource type="PackedScene" path="res://dungeon/rooms/Corridor_Straight.tscn" id="3_corridor"]
+[ext_resource type="PackedScene" path="res://dungeon/rooms/Corridor_L.tscn" id="4_corridor_l"]
+[ext_resource type="PackedScene" path="res://dungeon/rooms/CombatRoom_A.tscn" id="5_combat_a"]
+[ext_resource type="PackedScene" path="res://dungeon/rooms/CombatRoom_B.tscn" id="6_combat_b"]
+[ext_resource type="PackedScene" path="res://dungeon/rooms/CombatRoom_Pillars.tscn" id="7_pillars"]
+[ext_resource type="PackedScene" path="res://dungeon/rooms/TreasureRoom.tscn" id="8_treasure"]
+[ext_resource type="PackedScene" path="res://dungeon/rooms/ExitRoom.tscn" id="9_exit"]
+
+[resource]
+script = ExtResource("1_catalog")
+rooms = Array[PackedScene]([ExtResource("2_start"), ExtResource("3_corridor"), ExtResource("4_corridor_l"), ExtResource("5_combat_a"), ExtResource("6_combat_b"), ExtResource("7_pillars"), ExtResource("8_treasure"), ExtResource("9_exit")])
+scan_folder = "res://dungeon/rooms"
