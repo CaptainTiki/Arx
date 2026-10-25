@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://combat/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Texture2D" path="res://weapons/icons/woodcutters_axe.png" id="2_icon"]
+[ext_resource type="ArrayMesh" path="res://weapons/meshes/woodcutters_axe.res" id="3_mesh"]
+
+[resource]
+script = ExtResource("1_weapon")
+display_name = "Woodcutter's Axe"
+slot = 0
+icon = ExtResource("2_icon")
+world_mesh = ExtResource("3_mesh")
+damage = 45
+stamina_cost = 20
+swing_time = 0.75
+active_start = 0.25
+active_end = 0.45
+lunge_distance = 0.8
+hitstop = 0.08
+attack_reach = 1.5
+view_mesh = ExtResource("3_mesh")
+view_offset = Vector3(0.09, 0.01, 0)
+view_rotation = Vector3(0, 0, -14)

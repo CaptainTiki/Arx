@@ -3,13 +3,11 @@ extends Node3D
 ## First-person viewmodel and where melee feel lives: swing/block state, hit feedback,
 ## camera kick and shake, bob and sway.
 ##
-## Transform ownership: the AnimationPlayer drives SwordMesh; this script drives its own
-## transform (bob/sway) and Camera3D.rotation (kick/shake). Head keeps mouse-look pitch,
-## so kicks go on the camera beneath it instead of fighting the look code.
+## Transform ownership: the AnimationPlayer drives SwordMesh; equip() sets ViewPivot (the
+## per-weapon nudge); this script drives its own transform (bob/sway) and Camera3D.rotation
+## (kick/shake). Head keeps mouse-look pitch, so kicks go on the camera beneath it.
 
-enum State { IDLE, SWING, BLOCK }
-
-@export var weapon: WeaponData
+enum State { IDLE, SWING, BLOCK, EQUIP }
 
 @export_group("Hit Feedback")
 ## Engine.time_scale while hitstop holds. Duration comes from WeaponData.hitstop.
@@ -40,6 +38,9 @@ enum State { IDLE, SWING, BLOCK }
 ## A click this long before the rig frees up (mid-swing, mid-block) still swings. 0 = no buffer.
 @export var attack_buffer_time: float = 0.15
 
+## What's in hand. Set only through equip().
+var weapon: WeaponData
+
 var is_blocking: bool:
 	get:
 		return _state == State.BLOCK
@@ -48,13 +49,17 @@ var is_blocking: bool:
 @onready var _stamina: Stamina = %Stamina
 @onready var _camera: Camera3D = %Camera3D
 @onready var _hitbox: MeleeHitbox = %Hitbox
+@onready var _hitbox_shape: CollisionShape3D = %HitboxShape
 @onready var _anim: AnimationPlayer = %AnimationPlayer
-@onready var _blade: Node3D = %Blade
+@onready var _view_pivot: Node3D = %ViewPivot
+@onready var _sword_mesh: MeshInstance3D = %SwordMesh
 @onready var _whoosh_sfx: AudioStreamPlayer = %WhooshSfx
 @onready var _impact_sfx: AudioStreamPlayer = %ImpactSfx
 @onready var _clang_sfx: AudioStreamPlayer = %ClangSfx
 
 var _state: State = State.IDLE
+var _pending_weapon: WeaponData
+var _hitbox_back_z: float = 0.0
 var _swing_speed: float = 1.0
 var _attack_buffer_left: float = 0.0
 var _hitstop_token: int = 0
@@ -71,7 +76,9 @@ func _ready() -> void:
 	_hitbox.owner_body = _player
 	_hitbox.hit_landed.connect(_on_hit_landed)
 	_anim.animation_finished.connect(_on_animation_finished)
-	_apply_weapon_timing()
+	# The hitbox's near edge stays where it's authored; attack_reach only moves the far edge.
+	var box: BoxShape3D = _hitbox_shape.shape as BoxShape3D
+	_hitbox_back_z = _hitbox_shape.position.z + box.size.z * 0.5
 
 
 func _exit_tree() -> void:
@@ -111,22 +118,39 @@ func update_view(look: Vector2, delta: float, speed_ratio: float) -> void:
 	rotation = Vector3(deg_to_rad(_sway.y), deg_to_rad(_sway.x), deg_to_rad(_sway.x) * 0.5)
 
 
+## Swaps the held weapon. Mid-swing, mid-block or mid-equip it waits and applies on the next
+## return to IDLE, so a swap can never land inside active frames.
+func equip(new_weapon: WeaponData) -> void:
+	if new_weapon == null:
+		return
+	if _state != State.IDLE:
+		_pending_weapon = new_weapon
+		return
+	_apply_weapon(new_weapon)
+
+
+## Pickups and other interactions only work with the rig at rest (not swinging, blocking or equipping).
+func can_interact() -> bool:
+	return _state == State.IDLE
+
+
 ## Starts a swing if the rig is free and there's stamina for it.
 func try_swing() -> bool:
-	if _state != State.IDLE or not _stamina.try_spend(weapon.stamina_cost):
+	if _state != State.IDLE or weapon == null or not _stamina.try_spend(weapon.stamina_cost):
 		return false
 	_state = State.SWING
 	_anim.play(&"swing", 0.05, _swing_speed)
 	_whoosh_sfx.play()
-	_player.apply_lunge(weapon.lunge_distance)
+	# The step lands mid-active-window for every weapon, so it carries the body into the hit.
+	_player.apply_lunge(weapon.lunge_distance, (weapon.active_start + weapon.active_end) * 0.5)
 	kick(swing_kick_deg)
 	return true
 
 
 func play_block_impact() -> void:
 	_anim.play(&"block_impact")
-	if _player.fx:
-		_player.fx.play_block_spark(_blade.global_position)
+	if _player.fx and _sword_mesh.mesh:
+		_player.fx.play_block_spark(_sword_mesh.global_transform * _sword_mesh.mesh.get_aabb().get_center())
 	_clang_sfx.play()
 	shake(block_shake_deg, block_shake_time)
 	_hitstop(block_hitstop)
@@ -167,7 +191,9 @@ func _on_hit_landed(target: Node3D) -> void:
 func _on_animation_finished(anim_name: StringName) -> void:
 	if anim_name == &"swing":
 		_hitbox.end_swing()
-		_state = State.IDLE
+		_become_idle()
+	elif anim_name == &"equip":
+		_become_idle()
 
 
 func _enter_block() -> void:
@@ -176,8 +202,34 @@ func _enter_block() -> void:
 
 
 func _exit_block() -> void:
-	_state = State.IDLE
 	_anim.play(&"block_lower", 0.05)
+	_become_idle()
+
+
+func _become_idle() -> void:
+	_state = State.IDLE
+	if _pending_weapon:
+		_apply_weapon(_pending_weapon)
+
+
+func _apply_weapon(new_weapon: WeaponData) -> void:
+	weapon = new_weapon
+	_pending_weapon = null
+	_sword_mesh.mesh = weapon.view_mesh
+	_view_pivot.position = weapon.view_offset
+	_view_pivot.rotation_degrees = weapon.view_rotation
+	_apply_attack_reach()
+	_apply_weapon_timing()
+	_state = State.EQUIP
+	_anim.play(&"equip")
+	# Pose the new mesh below the screen this frame instead of flashing it at rest first.
+	_anim.seek(0.0, true)
+
+
+func _apply_attack_reach() -> void:
+	var box: BoxShape3D = _hitbox_shape.shape as BoxShape3D
+	box.size.z = weapon.attack_reach
+	_hitbox_shape.position.z = _hitbox_back_z - weapon.attack_reach * 0.5
 
 
 func _hitstop(duration: float) -> void:
@@ -192,7 +244,10 @@ func _hitstop(duration: float) -> void:
 		Engine.time_scale = 1.0
 
 
-## Swing timing lives in WeaponData; push it into the animation so method keys and playback speed match.
+## The `swing` clip is authored at 1 s with normalized keys. Playing it at speed 1 / swing_time
+## makes it last swing_time, and the hitbox keys sit at active_start / swing_time and
+## active_end / swing_time. This is a per-play speed, not AnimationPlayer.speed_scale, so block
+## and equip clips keep their own timing.
 func _apply_weapon_timing() -> void:
 	var swing: Animation = _anim.get_animation(&"swing")
 	_swing_speed = swing.length / weapon.swing_time

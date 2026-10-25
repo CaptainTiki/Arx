@@ -4,11 +4,14 @@ extends CanvasLayer
 
 @export var damage_flash_alpha: float = 0.35
 @export var damage_flash_time: float = 0.35
+## %s is the interactable's prompt_text().
+@export var prompt_format: String = "[E] %s"
 
 @onready var _health_bar: ProgressBar = %HealthBar
 @onready var _stamina_bar: ProgressBar = %StaminaBar
 @onready var _damage_flash: ColorRect = %DamageFlash
 @onready var _death_label: Label = %DeathLabel
+@onready var _prompt_label: Label = %PromptLabel
 
 var _flash_tween: Tween
 
@@ -30,6 +33,15 @@ func flash_damage() -> void:
 
 func show_death() -> void:
 	_death_label.visible = true
+
+
+func show_prompt(text: String) -> void:
+	_prompt_label.text = prompt_format % text
+	_prompt_label.visible = true
+
+
+func hide_prompt() -> void:
+	_prompt_label.visible = false
 
 
 func _on_health_changed(current: int, maximum: int) -> void:

@@ -1,11 +1,14 @@
 class_name CaptureViews
 extends SceneTree
-## Renders key poses (rest, swing frames, block, enemy windup) into one contact sheet PNG.
+## Renders a contact sheet: pickups on the floor with the prompt, then each weapon's viewmodel at
+## rest, mid-swing and blocking, then the hit puff and block spark.
 ## Needs a window (not --headless). Run from the project root:
 ##   godot --path . --script res://tools/capture_views.gd -- <output.png>
 
 const CELL_SCALE: float = 0.5
 const COLUMNS: int = 3
+## Normalized swing clip time where the blade crosses the center of the screen.
+const MID_SWING: float = 0.4444
 
 var _cells: Array[Image] = []
 
@@ -22,56 +25,71 @@ func _run() -> void:
 	current_scene = main
 	var player: Player = main.get_node("Player") as Player
 	var enemy: Enemy = main.get_node("Enemy") as Enemy
+	var rig: WeaponRig = player.get_node("%WeaponRig") as WeaponRig
 	var anim: AnimationPlayer = player.get_node("%AnimationPlayer") as AnimationPlayer
+	var head: Node3D = player.get_node("Head") as Node3D
 	await _seconds(0.2)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	await _seconds(0.8)
-	await _grab()
+	await _seconds(0.6)
 
-	# Viewmodel poses at fixed animation times.
-	for t: float in [0.09, 0.15, 0.2, 0.27]:
-		anim.play(&"swing")
-		anim.seek(t, true)
-		anim.pause()
-		await _grab()
-	anim.play(&"block_raise")
-	anim.seek(0.12, true)
-	anim.pause()
-	await _grab()
-
-	# Scrubbing can fire the swing's begin_swing key without its end_swing; close the hitbox.
-	(player.get_node("%Hitbox") as MeleeHitbox).end_swing()
-
-	# Step in and catch the enemy mid-windup.
-	anim.play(&"RESET")
-	player.global_position = Vector3(0.0, 0.0, -0.1)
-	await _wait_until(func() -> bool: return enemy.get_state_name() == "WINDUP", 4.0)
-	await _seconds(0.05)
-	await _grab()
-	await _seconds(0.45)
-	await _grab()
-
-	# Land a hit (flash, hit puff, hitstop) and catch it during and just after the freeze.
-	var rig: WeaponRig = player.get_node("%WeaponRig") as WeaponRig
-	rig.call(&"_on_hit_landed", enemy)
-	await _seconds(0.02)
-	await _grab()
+	# Spawn view tilted down a little so both floor pickups are in frame, then each one up close.
+	head.rotation.x = deg_to_rad(-22.0)
 	await _seconds(0.1)
 	await _grab()
+	for pickup_name: String in ["AxePickup", "DaggerPickup"]:
+		var pickup: Node3D = main.get_node("Pickups/" + pickup_name) as Node3D
+		player.global_position = pickup.global_position + Vector3(0.0, 0.0, 1.2)
+		_aim_at(player, pickup.global_position + Vector3(0.0, 0.1, 0.0))
+		await _seconds(0.15)
+		await _grab()
+	head.rotation.x = 0.0
+	player.global_position = Vector3(0.0, 0.0, 3.0)
+	player.rotation.y = 0.0
 
-	# Raise the block and take a strike on it (clang, block spark, shake).
+	# Each weapon: rest, mid-swing, block.
+	for weapon_path: String in ["res://weapons/rusty_sword.tres", "res://weapons/woodcutters_axe.tres", "res://weapons/rusted_dagger.tres"]:
+		rig.equip(load(weapon_path) as WeaponData)
+		await _seconds(0.4)
+		await _grab()
+		anim.play(&"swing")
+		anim.seek(MID_SWING, true)
+		anim.pause()
+		await _grab()
+		anim.play(&"block_raise")
+		anim.seek(0.12, true)
+		anim.pause()
+		await _grab()
+		# Scrubbing can fire begin_swing without end_swing; close the hitbox and return to rest.
+		(player.get_node("%Hitbox") as MeleeHitbox).end_swing()
+		anim.play(&"RESET")
+		await _seconds(0.05)
+
+	# Hit puff and block spark up close.
+	rig.equip(load("res://weapons/rusty_sword.tres") as WeaponData)
+	await _seconds(0.4)
+	player.global_position = enemy.global_position + Vector3(0.0, 0.0, 1.6)
+	player.rotation.y = 0.0
+	await _seconds(0.1)
+	rig.call(&"_on_hit_landed", enemy)
+	await _seconds(0.08)
+	await _grab()
 	anim.play(&"block_raise")
 	anim.seek(0.12, true)
 	anim.pause()
-	await _seconds(0.3)
+	await _seconds(0.1)
 	rig.play_block_impact()
-	await _seconds(0.03)
-	await _grab()
 	await _seconds(0.08)
 	await _grab()
 
 	_write_sheet(out_path)
 	quit()
+
+
+func _aim_at(player: Player, point: Vector3) -> void:
+	var head: Node3D = player.get_node("Head") as Node3D
+	var to_point: Vector3 = point - head.global_position
+	player.rotation.y = atan2(-to_point.x, -to_point.z)
+	head.rotation.x = atan2(to_point.y, Vector2(to_point.x, to_point.z).length())
 
 
 func _grab() -> void:
@@ -95,12 +113,3 @@ func _write_sheet(path: String) -> void:
 
 func _seconds(duration: float) -> void:
 	await create_timer(duration, true, false, true).timeout
-
-
-func _wait_until(condition: Callable, timeout: float) -> bool:
-	var deadline: float = Time.get_ticks_msec() / 1000.0 + timeout
-	while Time.get_ticks_msec() / 1000.0 < deadline:
-		if condition.call():
-			return true
-		await physics_frame
-	return false

@@ -2,6 +2,8 @@ class_name Player
 extends CharacterBody3D
 ## First-person controller. Reads PlayerIntent, moves and aims, forwards combat input to the WeaponRig.
 
+## Equipped on ready.
+@export var starting_weapon: WeaponData
 ## Pooled hit/block particles in the level (Main/FX). Optional, so Player.tscn still runs on its own.
 @export var fx: FxPool
 
@@ -18,8 +20,6 @@ extends CharacterBody3D
 @export var pitch_limit_deg: float = 85.0
 
 @export_group("Combat")
-## Seconds the swing lunge takes to bleed off. Distance comes from WeaponData.lunge_distance.
-@export var lunge_duration: float = 0.18
 ## dot(forward, to_attacker) above this counts as "in front" for blocking. 0.3 ≈ a 145° cone.
 @export var block_cone_dot: float = 0.3
 @export var hurt_shake_deg: float = 1.2
@@ -33,16 +33,22 @@ extends CharacterBody3D
 @onready var _weapon_rig: WeaponRig = %WeaponRig
 @onready var _hud: Hud = %HUD
 @onready var _hurt_sfx: AudioStreamPlayer = %HurtSfx
+@onready var _interact_ray: RayCast3D = %InteractRay
 
 var _move_velocity: Vector3 = Vector3.ZERO
-var _lunge_velocity: Vector3 = Vector3.ZERO
-var _lunge_decel: float = 0.0
+var _lunge_direction: Vector3 = Vector3.ZERO
+var _lunge_distance: float = 0.0
+var _lunge_duration: float = 0.0
+var _lunge_time: float = 0.0
 var _dead: bool = false
+var _interact_target: Node3D
+var _interact_prompt: String = ""
 
 
 func _ready() -> void:
 	_hud.bind(_health, _stamina)
 	_health.died.connect(_on_died)
+	_weapon_rig.equip(starting_weapon)
 
 
 func _process(delta: float) -> void:
@@ -62,6 +68,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if not _dead:
 		_weapon_rig.update_combat(_intent.attack_pressed, _intent.block_held, delta)
+		_update_interact()
 	_move(delta)
 
 
@@ -78,15 +85,26 @@ func take_hit(hit: HitInfo) -> void:
 	_hurt_sfx.play()
 
 
-## Forward shove on swing start. Linear decel, so total travel equals `distance`.
-func apply_lunge(distance: float) -> void:
-	if distance <= 0.0 or lunge_duration <= 0.0:
+## Forward shove on swing start: an ease-out step of exactly `distance` over `duration` seconds.
+func apply_lunge(distance: float, duration: float) -> void:
+	if distance <= 0.0 or duration <= 0.0:
 		return
 	var forward: Vector3 = -global_basis.z
 	forward.y = 0.0
-	var speed: float = 2.0 * distance / lunge_duration
-	_lunge_velocity = forward.normalized() * speed
-	_lunge_decel = speed / lunge_duration
+	_lunge_direction = forward.normalized()
+	_lunge_distance = distance
+	_lunge_duration = duration
+	_lunge_time = 0.0
+
+
+## Swap-in-place: we take the pickup's weapon and the pickup ends up holding the one we had.
+func swap_weapon(pickup: Pickup) -> void:
+	var incoming: WeaponData = pickup.item as WeaponData
+	if incoming == null or not _weapon_rig.can_interact():
+		return
+	var old: WeaponData = _weapon_rig.weapon
+	_weapon_rig.equip(incoming)
+	pickup.set_item(old)
 
 
 func is_dead() -> bool:
@@ -99,12 +117,43 @@ func _move(delta: float) -> void:
 	wish.y = 0.0
 	wish = wish.limit_length(1.0)
 	_move_velocity = _move_velocity.move_toward(wish * _max_speed(), acceleration * delta)
-	_lunge_velocity = _lunge_velocity.move_toward(Vector3.ZERO, _lunge_decel * delta)
+	var lunge: Vector3 = _lunge_step(delta)
 	var vertical: float = velocity.y
 	if not is_on_floor():
 		vertical += get_gravity().y * delta
-	velocity = Vector3(_move_velocity.x + _lunge_velocity.x, vertical, _move_velocity.z + _lunge_velocity.z)
+	velocity = Vector3(_move_velocity.x + lunge.x, vertical, _move_velocity.z + lunge.z)
 	move_and_slide()
+
+
+## Velocity that moves this tick's slice of the lunge curve. Exact at any tick rate.
+func _lunge_step(delta: float) -> Vector3:
+	if _lunge_time >= _lunge_duration or delta <= 0.0:
+		return Vector3.ZERO
+	var before: float = _ease_out(_lunge_time / _lunge_duration)
+	_lunge_time = minf(_lunge_time + delta, _lunge_duration)
+	var now: float = _ease_out(_lunge_time / _lunge_duration)
+	return _lunge_direction * (_lunge_distance * (now - before) / delta)
+
+
+## Tracks what the interact ray points at and refreshes the HUD prompt only when it changes.
+## No target while swinging, blocking or equipping, so you can't vacuum loot with block held.
+func _update_interact() -> void:
+	# Act on last frame's target first, so the refresh below already reflects the result.
+	if _intent.interact_pressed and _interact_target and _weapon_rig.can_interact():
+		_interact_target.call(&"interact", self)
+	var target: Node3D = null
+	if _weapon_rig.can_interact():
+		var hit: Node3D = _interact_ray.get_collider() as Node3D
+		if hit and hit.is_in_group(&"interactable"):
+			target = hit
+	var prompt: String = str(target.call(&"prompt_text")) if target else ""
+	if target != _interact_target or prompt != _interact_prompt:
+		_interact_target = target
+		_interact_prompt = prompt
+		if prompt.is_empty():
+			_hud.hide_prompt()
+		else:
+			_hud.show_prompt(prompt)
 
 
 func _max_speed() -> float:
@@ -125,6 +174,11 @@ func _is_in_front(source: Node3D) -> bool:
 	var forward: Vector3 = -global_basis.z
 	forward.y = 0.0
 	return forward.normalized().dot(to_source.normalized()) > block_cone_dot
+
+
+static func _ease_out(t: float) -> float:
+	var x: float = clampf(t, 0.0, 1.0)
+	return 1.0 - (1.0 - x) * (1.0 - x)
 
 
 func _on_died() -> void:

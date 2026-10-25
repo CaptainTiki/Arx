@@ -10,10 +10,13 @@ var look: Vector2 = Vector2.ZERO
 var attack_pressed: bool = false
 var block_held: bool = false
 var sprint_held: bool = false
+## E went down since the last physics frame.
+var interact_pressed: bool = false
 var restart_pressed: bool = false
 
 var _look_accum: Vector2 = Vector2.ZERO
 var _attack_latched: bool = false
+var _interact_latched: bool = false
 var _restart_latched: bool = false
 var _mouse_released: bool = false
 
@@ -36,6 +39,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_look_accum += (event as InputEventMouseMotion).relative
 	elif event.is_action_pressed(&"attack"):
 		_attack_latched = true
+	elif event.is_action_pressed(&"interact"):
+		_interact_latched = true
 	elif event.is_action_pressed(&"restart"):
 		_restart_latched = true
 
@@ -52,6 +57,8 @@ func _physics_process(_delta: float) -> void:
 	sprint_held = active and Input.is_action_pressed(&"sprint")
 	attack_pressed = _attack_latched
 	_attack_latched = false
+	interact_pressed = _interact_latched
+	_interact_latched = false
 	restart_pressed = _restart_latched
 	_restart_latched = false
 

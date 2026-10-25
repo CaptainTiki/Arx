@@ -1,10 +1,64 @@
-# Step 1 / 1.1 — One Room, One Enemy, Swing & Block
+# Steps 1–2 — One Room, One Enemy, Swing & Block, Pickups
 
 Open in Godot 4.7, press F5. Main scene: `res://main/Main.tscn`.
 
-**Controls:** WASD move · Shift sprint · LMB swing · RMB block (hold) · R restart · Esc frees the mouse (click to recapture).
+**Controls:** WASD move · Shift sprint · LMB swing · RMB block (hold) · E take · R restart · Esc frees the mouse (click to recapture).
 
-The grunt wakes up when you get within 4 m. It walks in, rears back with a red flash and a grunt (0.7 s, turning at most 180°/s to follow you), then lunges 0.9 m into the smash. After that it stands still, without turning, for 0.8 s of recovery plus a 1.5 s cooldown. Block the smash, release, and hit it 4 times.
+You start with the Rusty Sword. The Woodcutter's Axe lies front-left and the Rusted Dagger front-right; a spare sword sits behind the spawn point. Look at one within 2.5 m and press E. It goes into your hand, and your old weapon lies where it was.
+
+The grunt wakes up when you get within 4 m. It walks in, rears back with a red flash and a grunt (0.7 s, turning at most 180°/s to follow you), then lunges 0.9 m into the smash. After that it stands still, without turning, for 0.8 s of recovery plus a 1.5 s cooldown. Block the smash, release, and hit it. R resets the room (and your weapon) to try another weapon on a fresh grunt.
+
+---
+
+## Step 2: weapons
+
+### Per-weapon tunables — `weapons/*.tres` (`WeaponData`, extends `ItemData`)
+
+| Field | Rusty Sword | Woodcutter's Axe | Rusted Dagger | What it drives |
+|---|---|---|---|---|
+| `damage` | 25 | 45 | 12 | Hits to kill the 100 HP grunt: 4 / **3** / 9 |
+| `stamina_cost` | 10 | 20 | 5 | Swings per full bar: 10 / 5 / 20 |
+| `swing_time` | 0.45 | 0.75 | 0.25 | Length of the swing; the clip plays at speed 1 / swing_time |
+| `active_start` – `active_end` | 0.12–0.28 | 0.25–0.45 | 0.06–0.14 | Hitbox window (real seconds into the swing) |
+| `lunge_distance` | 0.6 | 0.8 | 0.4 | Forward step, spread over swing start → middle of the active window (0.20 / 0.35 / 0.10 s) |
+| `hitstop` | 0.05 | 0.08 | 0.03 | Freeze on a landed hit |
+| `attack_reach` | 1.4 | 1.5 | 1.0 | Hitbox length forward from its authored near edge (0.15 m in front of the camera) |
+| `view_mesh` / `world_mesh` | `meshes/rusty_sword.res` | `meshes/woodcutters_axe.res` | `meshes/rusted_dagger.res` | Same mesh for both; Pickup lays the world one flat |
+| `view_offset` | (0, 0, 0) | (0.09, 0.01, 0) | (-0.05, 0.06, -0.05) | Rig-space nudge of the whole swing path, meters |
+| `view_rotation` | (0, 0, 0) | (0, 0, -14) | (6, 4, 0) | Rig-space rotation nudge, degrees. The axe rolls upright, the dagger tilts up and inward. |
+| `icon` | `icons/rusty_sword.png` | `icons/woodcutters_axe.png` | `icons/rusted_dagger.png` | 32×32 placeholder for step 5 |
+
+**Axe math:** the handoff says the axe two-shots the grunt, but 45 × 2 = 90 < 100 HP, so as written it's a three-shot. Change one number to make it a two-shot: axe `damage` ≥ 50, or grunt `max_hp` ≤ 90 in `enemy/grunt.tres`. Lowering grunt HP leaves the sword at 4 hits and makes the dagger 8.
+
+**Still shared by every weapon** (these are the levers if the dagger reads as a worse sword): the one `swing` clip's poses, the camera kicks (`swing_kick_deg`, `hit_kick_deg` on WeaponRig), the whoosh/thud SFX, the 0.3 s `equip` clip, and the block poses. Everything in the table above is per weapon, and the smoke test measures each value in play.
+
+### How the normalized swing clip maps to `swing_time`
+
+The `swing` clip in `Player.tscn → WeaponRig/AnimationPlayer` is authored at **1.0 s**. Its pose keys are at normalized times, and the blade crosses screen center at 0.444. On every `equip()`:
+
+- **Playback:** `play("swing", blend, 1.0 / swing_time)`, so the clip lasts exactly `swing_time`. It's a per-play speed rather than `AnimationPlayer.speed_scale`, because speed_scale would also stretch `block_*` and `equip`.
+- **Hitbox keys:** the two method keys move to `active_start / swing_time` and `active_end / swing_time`. For the axe that's 0.333 / 0.600; for the dagger 0.24 / 0.56.
+- **Lunge:** the step runs from swing start to `(active_start + active_end) / 2` real seconds, so it carries the body into the hit for every weapon. With the old fixed 0.18 s, the axe finished stepping before its active window even opened. The lunge is now an exact ease-out displacement per tick; the old per-tick decay came up about 0.05 m short on every swing.
+
+Edit pose keys in the editor freely. Don't hand-move the two method keys; `equip()` overwrites them from the data.
+
+### Equip
+
+`WeaponRig.equip(weapon)` swaps `SwordMesh.mesh`, sets `ViewPivot` from `view_offset` / `view_rotation`, resizes the hitbox from `attack_reach`, rewrites swing timing, then plays `equip` (0.3 s, rises from below, not interruptible). Called mid-swing, mid-block or mid-equip, it queues and applies on the next return to IDLE, so it never swaps during active frames. `Player.starting_weapon` is equipped on ready.
+
+### Pickups and interact
+
+| Where | Knob | Value | Notes |
+|---|---|---|---|
+| `Player.tscn → Head/Camera3D/InteractRay` | `target_position` | (0, 0, -2.5) | Reach. Masks layer 4 only. |
+| `items/Pickup.tscn → InteractShape` | box | 0.45 × 0.25 × 1.0 m | What the ray hits. It's on layer 4, which nothing physical collides with. |
+| `items/Pickup.tscn → Glint` + `AnimationPlayer` | energy / range | 0.1 → 0.35 pulse over 2.4 s, 0.7 m | Palette `fff3c4`. Set the Glint invisible to drop it. |
+| `Player.tscn → HUD` | `prompt_format` | `"[E] %s"` | `%s` is `prompt_text()`, e.g. "Take Woodcutter's Axe" |
+
+- **Swap-in-place:** taking a weapon calls `pickup.set_item(old_weapon)`. The pickup never frees and nothing spawns, so the "drop" is always exactly where the pickup was. `set_item` re-centers the new mesh over the pickup and rests it on the floor, so a dagger can replace an axe without floating.
+- **Non-weapon items:** `Pickup.interact()` only prints the name and slot for now (step 5).
+- **Blocked while busy:** while swinging, blocking or equipping there's no target and no prompt, so you can't vacuum loot with block held.
+- **Where it lives:** the target is cached in `Player._update_interact()`, and the HUD only updates when the target or its prompt text changes. The press is handled before the refresh, so the prompt reflects a swap in the same frame.
 
 ---
 
@@ -32,16 +86,9 @@ All of these live in `enemy/grunt.tres` (`EnemyData`) unless noted.
 
 ## Tunables: what lives where
 
-### Weapon — `weapons/rusty_sword.tres` (`WeaponData`)
+### Weapons
 
-| Field | Value | Notes |
-|---|---|---|
-| `damage` | 25 | 4 hits kills the 100 HP grunt |
-| `stamina_cost` | 10 | ≈10 swings per bar |
-| `swing_time` | 0.45 s | The `swing` animation is time-scaled to this |
-| `active_start` / `active_end` | 0.12 / 0.28 s | **Written into the swing anim's method-track keys at startup** (`WeaponRig._apply_weapon_timing`). Edit them here; key times edited in the AnimationPlayer get overwritten. |
-| `lunge_distance` | 0.6 m | Forward step on swing start |
-| `hitstop` | 0.05 s | Real-time freeze on a landed hit |
+See **Step 2: weapons** above for every per-weapon field.
 
 ### Enemy — `enemy/grunt.tres` (`EnemyData`)
 
@@ -99,12 +146,12 @@ The enemy animations (`windup`, `strike`, `recover`, `flinch`) are played time-s
 
 | Field | Value |
 |---|---|
+| `starting_weapon` | `weapons/rusty_sword.tres`, equipped on ready |
 | `fx` | `Main/FX`, set in `Main.tscn`. Leave empty to run Player.tscn alone, without particles. |
 | `walk_speed` / `sprint_speed` / `block_speed` | 5.0 / 7.5 / 2.5 m/s |
 | `acceleration` | 45 m/s² |
 | `mouse_sensitivity` | 0.0022 rad/px |
 | `pitch_limit_deg` | 85 |
-| `lunge_duration` | 0.18 s (distance comes from `WeaponData.lunge_distance`) |
 | `block_cone_dot` | 0.3 (≈145° cone) |
 | `hurt_shake_deg` / `hurt_shake_time` | 1.2° / 0.25 s |
 | `death_restart_delay` | 2.5 s |
@@ -122,8 +169,8 @@ The enemy animations (`windup`, `strike`, `recover`, `flinch`) are played time-s
 |---|---|
 | `Enemy.tscn` root | `flash_material`, the shared, local-to-scene overlay. Its colors and timing come from `EnemyData`. |
 | `Player.tscn → HUD` | `damage_flash_alpha` 0.35, `damage_flash_time` 0.35 s |
-| `Player.tscn → WeaponRig/Hitbox/CollisionShape3D` | 0.6 × 0.5 × 1.4 m box at z = -0.85, so it reaches 1.55 m. The visible blade tip reaches about 1.3 m mid-swing, so the box is about 20% longer. |
-| `Player.tscn → WeaponRig/AnimationPlayer` | Sword poses for `swing`, `block_raise`, `block_lower`, `block_impact` |
+| `Player.tscn → WeaponRig/Hitbox/HitboxShape` | Width 0.6 and height 0.5 are authored here, as is the near edge 0.15 m in front of the camera. Length comes from `attack_reach` on equip. The sword reaches 1.55 m against a visible tip of about 1.3 m. |
+| `Player.tscn → WeaponRig/AnimationPlayer` | Viewmodel poses for `swing` (normalized 1 s), `block_raise`, `block_lower`, `block_impact`, `equip` (0.3 s). Tracks drive `ViewPivot/SwordMesh`. |
 | SFX nodes | `WhooshSfx` -6 dB, `ImpactSfx` 0 dB, `ClangSfx` -3 dB, `HurtSfx` -4 dB, enemy `SwingSfx` pitch 0.7, `DeathSfx` pitch 0.6 |
 | `world/Torch.tscn` root | `light_energy` 2.0, `omni_range` 7.0, `flicker_amount` 0.15, `flicker_speed` 7 |
 | `Main.tscn → Room/WorldEnvironment` | ambient 0.6, fog density 0.025 |
@@ -132,7 +179,7 @@ The enemy animations (`windup`, `strike`, `recover`, `flinch`) are played time-s
 
 ## How the pieces fit
 
-- **Input:** only `PlayerIntent` touches `Input`. It runs at process and physics priority -1, so it samples before `Player`. Attack and restart are latched from input events, so a click can't be dropped between frames.
+- **Input:** only `PlayerIntent` touches `Input`. It runs at process and physics priority -1, so it samples before `Player`. Attack, interact and restart are latched from input events, so a press can't be dropped between frames.
 - **Damage:** everything goes through `take_hit(hit: HitInfo)`. `Player.take_hit` checks block and cone and only then calls `Health`. `Enemy.take_hit` flashes, applies damage, then decides on a flinch (only if `data.can_flinch`, and never in WINDUP or STRIKE).
 - **Hitboxes:** `MeleeHitbox.begin_swing()` / `end_swing()` are called only from AnimationPlayer method tracks. Besides `body_entered` it also sweeps `get_overlapping_bodies()` while active, because a body already inside the box when monitoring turns on doesn't reliably fire `body_entered`. `overlap_point(body)` returns the midpoint between the hitbox shape and the body's shape, used as the FX contact point.
 - **Enemy states:** IDLE → CHASE → WINDUP (capped tracking) → STRIKE (facing locked, lunge) → RECOVER → COOLDOWN → CHASE. FLINCH returns to COOLDOWN if cooldown time is left, otherwise to CHASE. The lunge is an ease-out displacement over `strike_time`, applied through `velocity` + `move_and_slide()`, so walls and the player's capsule stop it.
@@ -147,6 +194,7 @@ The enemy animations (`windup`, `strike`, `recover`, `flinch`) are played time-s
 | 1 | world | CSG room |
 | 2 | player | Player body (mask: world + enemy). Enemy hitbox masks this layer. |
 | 3 | enemy | Enemy body (mask: world + player). Player hitbox masks this layer. |
+| 4 | interactable | Pickups (`StaticBody3D`, mask none). Only `InteractRay` masks this layer; bodies walk through them. |
 
 Hitbox areas have no layer of their own. The enemy hitbox's `BoxShape3D` is `resource_local_to_scene`, so resizing it from `attack_reach` doesn't leak into other enemy instances.
 
@@ -165,6 +213,8 @@ The greybox primitives use one material per swatch, with `uv1_scale = 0` and `uv
 
 FX swatches: `fx_blood` = row 2 col 2 (`84191c`, shaded); `fx_spark` = row 2 col 7 (`fff3c4`, unshaded).
 
+**Weapon meshes** are the first real use of palette UVs. Each is one `ArrayMesh` built from boxes by the asset generator, and every box's UVs point at its swatch center. There are two surfaces: matte (`palette_base.tres`) and metal (`palette_metal.tres`, metallic 0.2). Both sample the same palette. To change a weapon's shape or colors, edit its parts list in `tools/generate_placeholder_assets.gd → _write_weapons()` and rerun the generator. Each part is a size, a position (grip at origin, long axis +Y, edge toward -X), a swatch index and whether it's metal.
+
 ---
 
 ## Tools
@@ -173,16 +223,19 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 
 | Command (from the project root) | What it does |
 |---|---|
-| `godot --headless --path . --script res://tools/generate_placeholder_assets.gd` | Regenerates the palette PNG and the synthesized placeholder SFX (deterministic) |
-| `godot --headless --path . --script res://tools/combat_smoke_test.gd` | Drives the real scene with input events. It checks that the data is applied on ready, that you take a hit and the lunge covers `strike_lunge`, a successful block, the windup turn cap, facing and position locked through RECOVER/COOLDOWN, that hit-and-back-off gets caught, that an early retreat escapes, and a punish to the kill with `time_scale` restored. Exit code 0 means pass. |
-| `godot --path . --script res://tools/capture_views.gd -- out.png` | Opens a window and renders a contact sheet: viewmodel poses, enemy tell, hit puff and block spark |
+| `godot --headless --path . --script res://tools/generate_placeholder_assets.gd` | Regenerates the palette PNG, the synthesized placeholder SFX, the weapon meshes and the 32×32 weapon icons (deterministic) |
+| `godot --headless --path . --script res://tools/combat_smoke_test.gd` | Drives the real scene with input events, in two parts. **Part A (weapons):** the prompt, interact being blocked while blocking, swap-in-place both ways, an equip during a swing waiting for IDLE, and a probe per weapon. The probe measures swing length, the hitbox open/close times, lunge distance, stamina spent and damage dealt against that weapon's data. **Part B (fresh scene, grunt):** data applied, strike lunge, block, the windup turn cap, facing and position locked through RECOVER/COOLDOWN, hit-and-back-off caught, an early retreat escaping, and a punish to the kill. Exit code 0 means pass. |
+| `godot --path . --script res://tools/capture_views.gd -- out.png` | Opens a window and renders a contact sheet: pickups on the floor with the prompt, each weapon at rest, mid-swing and blocking, then the hit puff and block spark |
 
 ---
 
 ## Decisions and deviations from the handoffs
 
 - **Camera kick goes on `Camera3D`, not `Head`.** Head holds mouse-look pitch, so tweening it would fight the look code. The camera's own rotation is otherwise unused, so kick and shake compose there.
-- **`SwordMesh` is the grip.** Its mesh is the handle, with Blade, Guard and Pommel as children, so the animation rotates around the hand instead of the blade's center.
+- **`SwordMesh` is the hand.** Its origin is the grip, so swings rotate around the hand. Since step 2 it holds a single generated `view_mesh` per weapon instead of child boxes. It sits under a new `ViewPivot` node that carries `view_offset` / `view_rotation`. The AnimationPlayer owns `SwordMesh`'s transform, so the nudge needs its own node.
+- **No `AnimationPlayer.speed_scale`.** Swing speed is passed per `play()`, so `block_*` and `equip` keep their authored timing.
+- **The lunge duration comes from the weapon** (swing start → middle of the active window) instead of the removed `Player.lunge_duration`. A fixed 0.18 s had the axe finish its step before the hit.
+- **EQUIP is a fourth rig state** (with IDLE, SWING, BLOCK). While equipping you can't swing, block, interact or equip again; extra equips queue.
 - **The enemy body is a small rig:** `Rig` → `Legs`, `Body` (pelvis) → Torso, Head, Eyes, both arms, Club. The `die` anim tips `Rig` over backward. Every mesh shares one local-to-scene overlay material for the hit flash.
 - **`EnemyData` has more than the 1.1 spec.** `aggro_range`, `chase_turn_rate`, the flinch, knockback and despawn values, and the hit-flash colors and timings moved in too, so `enemy.gd` has no tuning numbers left.
 - **COOLDOWN is its own state** rather than a timer inside CHASE. That makes "no tracking, no movement" explicit, and it shows up in `get_state_name()` for debugging.
@@ -191,8 +244,9 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - **The block is active the moment RMB goes down.** `block_raise` is only cosmetic.
 - **`untyped_declaration` is set to Error** in project settings, so the static-typing rule is enforced.
 
-## Known limitations (step 2 candidates)
+## Known limitations
 
+- One `swing` clip serves every weapon, so the dagger slashes the same arc as the sword, just faster. Camera kicks and SFX are shared too. If the dagger feels like a worse sword, these are the levers. A per-weapon clip or a kick scale in `WeaponData` would be the next step.
 - The viewmodel is world-scale geometry on the camera, so it clips into the grunt at point-blank range and into walls. With `strike_lunge` this happens after every strike. Fix with a viewmodel render layer or camera, or a depth-squash shader.
 - The hit-puff contact point is the hitbox/body midpoint. Within about 1 m it lands inside the body.
 - The SFX are synthesized placeholders.

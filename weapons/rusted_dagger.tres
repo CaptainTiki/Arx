@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="WeaponData" format=3]
+
+[ext_resource type="Script" path="res://combat/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Texture2D" path="res://weapons/icons/rusted_dagger.png" id="2_icon"]
+[ext_resource type="ArrayMesh" path="res://weapons/meshes/rusted_dagger.res" id="3_mesh"]
+
+[resource]
+script = ExtResource("1_weapon")
+display_name = "Rusted Dagger"
+slot = 0
+icon = ExtResource("2_icon")
+world_mesh = ExtResource("3_mesh")
+damage = 12
+stamina_cost = 5
+swing_time = 0.25
+active_start = 0.06
+active_end = 0.14
+lunge_distance = 0.4
+hitstop = 0.03
+attack_reach = 1.0
+view_mesh = ExtResource("3_mesh")
+view_offset = Vector3(-0.05, 0.06, -0.05)
+view_rotation = Vector3(6, 4, 0)

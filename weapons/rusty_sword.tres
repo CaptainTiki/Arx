@@ -1,10 +1,15 @@
 [gd_resource type="Resource" script_class="WeaponData" format=3]
 
 [ext_resource type="Script" path="res://combat/weapon_data.gd" id="1_weapon"]
+[ext_resource type="Texture2D" path="res://weapons/icons/rusty_sword.png" id="2_icon"]
+[ext_resource type="ArrayMesh" path="res://weapons/meshes/rusty_sword.res" id="3_mesh"]
 
 [resource]
 script = ExtResource("1_weapon")
 display_name = "Rusty Sword"
+slot = 0
+icon = ExtResource("2_icon")
+world_mesh = ExtResource("3_mesh")
 damage = 25
 stamina_cost = 10
 swing_time = 0.45
@@ -12,3 +17,7 @@ active_start = 0.12
 active_end = 0.28
 lunge_distance = 0.6
 hitstop = 0.05
+attack_reach = 1.4
+view_mesh = ExtResource("3_mesh")
+view_offset = Vector3(0, 0, 0)
+view_rotation = Vector3(0, 0, 0)
