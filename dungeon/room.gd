@@ -74,10 +74,12 @@ func get_authoring_problems() -> PackedStringArray:
 			problems.append("SpawnPoint '%s' at %s is outside the footprint." % [spawn.name, _fmt(at)])
 		if spawn.kind == SpawnPoint.Kind.PLAYER:
 			players += 1
+		elif spawn.table:
+			problems.append_array(_table_problems(spawn))
 		elif spawn.kind == SpawnPoint.Kind.ENEMY and spawn.fixed_scene == null:
-			problems.append("ENEMY SpawnPoint '%s' has no fixed_scene." % spawn.name)
+			problems.append("ENEMY SpawnPoint '%s' has neither a table nor a fixed_scene." % spawn.name)
 		elif spawn.kind == SpawnPoint.Kind.WEAPON and spawn.fixed_item == null:
-			problems.append("WEAPON SpawnPoint '%s' has no fixed_item." % spawn.name)
+			problems.append("WEAPON SpawnPoint '%s' has neither a table nor a fixed_item." % spawn.name)
 	if type == Type.START and players != 1:
 		problems.append("START rooms need exactly one PLAYER SpawnPoint (found %d)." % players)
 	return problems
@@ -103,6 +105,22 @@ static func owning_room(node: Node) -> Room:
 	while parent and not (parent is Room):
 		parent = parent.get_parent()
 	return parent as Room
+
+
+## A table on an ENEMY point should only carry enemies, and one on a WEAPON point only items.
+static func _table_problems(spawn: SpawnPoint) -> PackedStringArray:
+	var problems: PackedStringArray = []
+	var table_name: String = spawn.table.resource_path.get_file()
+	if spawn.table.total_weight() <= 0.0:
+		problems.append("SpawnPoint '%s': table %s has no weighted entries." % [spawn.name, table_name])
+	for entry: SpawnEntry in spawn.table.entries:
+		if entry == null:
+			problems.append("SpawnPoint '%s': table %s has an empty slot." % [spawn.name, table_name])
+		elif spawn.kind == SpawnPoint.Kind.ENEMY and entry.item:
+			problems.append("ENEMY SpawnPoint '%s': table %s has an item row (%s); it would spawn nothing." % [spawn.name, table_name, entry.item.display_name])
+		elif spawn.kind == SpawnPoint.Kind.WEAPON and entry.enemy:
+			problems.append("WEAPON SpawnPoint '%s': table %s has an enemy row (%s); it would spawn nothing." % [spawn.name, table_name, entry.enemy.display_name])
+	return problems
 
 
 func _in_footprint(at_cell: Vector2i) -> bool:

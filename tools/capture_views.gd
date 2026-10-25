@@ -81,6 +81,51 @@ func _run() -> void:
 	await _seconds(0.08)
 	await _grab()
 
+	# Enemy lineup: skitterer, grunt, bruiser side by side, out of aggro range.
+	enemy.queue_free()
+	anim.play(&"RESET")
+	var lineup: Array[String] = ["res://enemy/skitterer.tres", "res://enemy/grunt.tres", "res://enemy/bruiser.tres"]
+	for i: int in lineup.size():
+		var variant: Enemy = (load("res://enemy/Enemy.tscn") as PackedScene).instantiate() as Enemy
+		variant.data = load(lineup[i]) as EnemyData
+		variant.position = Vector3((i - 1) * 2.4, 0.0, -2.5)
+		variant.rotation.y = PI
+		main.add_child(variant)
+	player.global_position = Vector3(0.0, 0.0, 3.2)
+	player.rotation.y = 0.0
+	head.rotation.x = deg_to_rad(4.0)
+	await _seconds(0.4)
+	await _grab()
+
+	# Inventory screen: some loot in the bag, armour on, tooltip over the axe.
+	var inventory: Inventory = player.inventory
+	for path: String in ["res://weapons/woodcutters_axe.tres", "res://weapons/rusted_dagger.tres", "res://items/armor/rawhide_boots.tres",
+			"res://items/armor/rawhide_gloves.tres", "res://items/armor/rawhide_cap.tres"]:
+		inventory.try_add(load(path) as ItemData)
+	inventory.equip(load("res://items/armor/iron_cap.tres") as ItemData)
+	inventory.equip(load("res://items/armor/rawhide_vest.tres") as ItemData)
+	var screen: InventoryScreen = player.get_node("%InventoryScreen") as InventoryScreen
+	screen.set_open(true)
+	var axe_slot: Control = screen.get_node("Root/Bag/BagSlot0") as Control
+	await _seconds(0.1)
+	Input.warp_mouse(axe_slot.get_global_rect().get_center())
+	# An unfocused capture window may not deliver the motion event, so hover it directly too.
+	screen._on_slot_hovered(axe_slot as ItemSlotBase)
+	await _seconds(0.3)
+	await _grab()
+	screen.set_open(false)
+
+	# Full bag: the pickup flips and the prompt line says so.
+	var sword_pickup: Pickup = main.get_node("Pickups/SwordPickup") as Pickup
+	while inventory.try_add(load("res://items/armor/rawhide_boots.tres") as ItemData):
+		pass
+	player.global_position = sword_pickup.global_position + Vector3(0.0, 0.0, 1.2)
+	_aim_at(player, sword_pickup.global_position + Vector3(0.0, 0.1, 0.0))
+	await _seconds(0.2)
+	sword_pickup.interact(player)
+	await _seconds(0.08)
+	await _grab()
+
 	_write_sheet(out_path)
 	quit()
 

@@ -82,10 +82,3 @@ position = Vector3(6, 0, 4)
 rotation = Vector3(0, 3.14159, 0)
 script = ExtResource("3_spawn")
 kind = 2
-
-[node name="Sword" type="Marker3D" parent="Spawns"]
-position = Vector3(3.5, 0, 7.5)
-rotation = Vector3(0, 0.6, 0)
-script = ExtResource("3_spawn")
-kind = 1
-fixed_item = ExtResource("10_sword")

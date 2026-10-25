@@ -1,12 +1,21 @@
 class_name Pickup
 extends StaticBody3D
-## An item lying on the floor. Taking a weapon swaps it in place: this pickup stays put and now
-## holds the weapon you had. Nothing is freed or instantiated.
+## An item lying on the floor. Taking it moves it into the bag and frees this pickup. With a full
+## bag it flips in place and says no.
 
 @export var item: ItemData
+@export_group("Reject")
+## Seconds for the half-turn out and back.
+@export var reject_time: float = 0.25
+## How high it hops while flipping, in meters.
+@export var reject_hop: float = 0.15
 
+@onready var _flip: Node3D = %Flip
 @onready var _mesh: MeshInstance3D = %Mesh
 @onready var _shape: CollisionShape3D = %InteractShape
+@onready var _nope_sfx: AudioStreamPlayer3D = %NopeSfx
+
+var _reject_tween: Tween
 
 
 func _ready() -> void:
@@ -16,10 +25,30 @@ func _ready() -> void:
 func interact(player: Player) -> void:
 	if item == null:
 		return
-	if item.slot == ItemData.Slot.WEAPON:
-		player.swap_weapon(self)
+	if player.inventory.try_add(item):
+		queue_free()
 	else:
-		print("Pickup: %s (%s) - non-weapon slots are handled in step 5" % [item.display_name, ItemData.Slot.keys()[item.slot]])
+		reject()
+		player.notify_inventory_full()
+
+
+## The "bag full" tell: a half turn around Y and back with a little hop, plus a dull nope.
+func reject() -> void:
+	if _reject_tween:
+		_reject_tween.kill()
+	_flip.rotation.y = 0.0
+	_flip.position.y = 0.0
+	var half: float = reject_time * 0.5
+	_reject_tween = create_tween()
+	_reject_tween.tween_property(_flip, "rotation:y", PI, half).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_reject_tween.parallel().tween_property(_flip, "position:y", reject_hop, half).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_reject_tween.tween_property(_flip, "rotation:y", 0.0, half).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_reject_tween.parallel().tween_property(_flip, "position:y", 0.0, half).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	_nope_sfx.play()
+
+
+func is_rejecting() -> bool:
+	return _reject_tween != null and _reject_tween.is_running()
 
 
 ## Swaps the resource and refreshes the mesh. Null empties the pickup (hidden, ray can't hit it).

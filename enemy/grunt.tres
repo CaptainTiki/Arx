@@ -8,6 +8,7 @@ display_name = "Grunt"
 max_hp = 100
 move_speed = 3.0
 can_flinch = true
+body_scale = 1.0
 trigger_range = 1.8
 attack_reach = 2.3
 damage = 15

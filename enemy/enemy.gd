@@ -19,6 +19,8 @@ const BLEND_LOOP: float = 0.15
 @onready var _health: Health = %Health
 @onready var _hitbox: MeleeHitbox = %Hitbox
 @onready var _hitbox_shape: CollisionShape3D = %HitboxShape
+@onready var _rig: Node3D = %Rig
+@onready var _tinted_meshes: Array[MeshInstance3D] = [%Torso, %ArmL, %Arm]
 @onready var _anim: AnimationPlayer = %AnimationPlayer
 @onready var _body_shape: CollisionShape3D = %BodyShape
 @onready var _tell_flash: OmniLight3D = %TellFlash
@@ -47,6 +49,7 @@ func _ready() -> void:
 	_health.changed.connect(_on_health_changed)
 	_health.died.connect(_on_died)
 	_health.set_max_hp(data.max_hp)
+	_apply_body()
 	_apply_attack_reach()
 	_enter(State.IDLE)
 
@@ -186,6 +189,22 @@ func _die() -> void:
 	_anim.play(&"die", BLEND_ACTION)
 	_death_sfx.play()
 	remove_from_group(&"enemies")
+
+
+## Scales the rig, its capsule and the things that hang off its height; tints torso and arms.
+## The capsule shape is local to scene, so resizing it is per enemy.
+func _apply_body() -> void:
+	var s: float = data.body_scale
+	_rig.scale = Vector3.ONE * s
+	var capsule: CapsuleShape3D = _body_shape.shape as CapsuleShape3D
+	capsule.radius *= s
+	capsule.height *= s
+	_body_shape.position.y *= s
+	_health_bar.position.y *= s
+	_tell_flash.position.y *= s
+	if data.body_material:
+		for mesh: MeshInstance3D in _tinted_meshes:
+			mesh.material_override = data.body_material
 
 
 ## Box runs from the enemy's center forward to attack_reach. The shape is local to scene, so this is per enemy.

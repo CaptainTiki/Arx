@@ -5,6 +5,7 @@ extends SceneTree
 ## 2. Every catalog door, at every rotation, lands on the edge center the planner thinks it does.
 ## 3. A batch of seeded layouts: restarts, overlaps, dead ends, depth (floor vs hallway), size.
 ## 4. Real builds: every connected door pair meets in world space, every other door is plugged.
+## 5. Spawn tables: roll frequencies match weights, enemy variants apply, same seed = same spawns.
 ## Run from the project root:
 ##   godot --headless --path . --script res://tools/dungeon_tests.gd [-- <batch size> <build count>]
 
@@ -42,6 +43,11 @@ func _run() -> void:
 
 	print("-- %d real builds" % build_count)
 	await _test_builds(main, generator, build_count)
+
+	print("-- spawn tables")
+	_test_table_weights()
+	await _test_enemy_variants(main)
+	await _test_same_seed(generator)
 
 	print("RESULT: %s (%d failures)" % ["PASS" if _failures == 0 else "FAIL", _failures])
 	quit(0 if _failures == 0 else 1)
@@ -111,13 +117,19 @@ func _test_authoring_warnings() -> void:
 	var cases: Dictionary[String, Callable] = {
 		"door off its edge": func(r: Room) -> void: (r.get_node("Doors/DoorS") as Node3D).position.x += 1.0,
 		"door in the middle of the room": func(r: Room) -> void: (r.get_node("Doors/DoorS") as Node3D).position.z = 6.0,
-		"spawn outside the footprint": func(r: Room) -> void: (r.get_node("Spawns/Sword") as Node3D).position.x = 13.0,
+		"spawn outside the footprint": func(r: Room) -> void: (r.get_node("Spawns/Player") as Node3D).position.x = 13.0,
 		"doorway cutter missing": func(r: Room) -> void: r.get_node("Geometry/Walls/DoorwayS").free(),
 		"START without a PLAYER spawn": func(r: Room) -> void: r.get_node("Spawns/Player").free(),
 	}
-	for label: String in cases:
-		var room: Room = scene.instantiate() as Room
-		(cases[label] as Callable).call(room)
+	# Table checks need a WEAPON point; the treasure room has two.
+	var treasure: PackedScene = load("res://dungeon/rooms/TreasureRoom.tscn") as PackedScene
+	var treasure_cases: Dictionary[String, Callable] = {
+		"enemy table on a WEAPON point": func(r: Room) -> void: (r.get_node("Spawns/WeaponA") as SpawnPoint).table = load("res://data/tables/combat_enemy.tres") as SpawnTable,
+	}
+	for label: String in cases.keys() + treasure_cases.keys():
+		var on_treasure: bool = treasure_cases.has(label)
+		var room: Room = (treasure if on_treasure else scene).instantiate() as Room
+		((treasure_cases[label] if on_treasure else cases[label]) as Callable).call(room)
 		var problems: PackedStringArray = room.get_authoring_problems()
 		_check(not problems.is_empty(), "warns on %s: %s" % [label, problems[0] if not problems.is_empty() else "(nothing)"])
 		room.free()
@@ -217,7 +229,6 @@ func _test_builds(main: Node, generator: DungeonGenerator, count: int) -> void:
 			if child is Room:
 				rooms.append(child as Room)
 		var open_ends: Array[Vector3] = []
-		var expected_spawns: int = 0
 		for room: Room in rooms:
 			for door: Door in room.get_doors():
 				if door.used:
@@ -225,11 +236,13 @@ func _test_builds(main: Node, generator: DungeonGenerator, count: int) -> void:
 				elif door.get_child_count() == 0:
 					missing_plugs += 1
 			for spawn: SpawnPoint in room.get_spawn_points():
-				if spawn.kind == SpawnPoint.Kind.PLAYER:
-					if player.global_position.distance_to(spawn.global_position) > 0.01:
-						misplaced_players += 1
-				else:
-					expected_spawns += 1
+				if spawn.kind == SpawnPoint.Kind.PLAYER and player.global_position.distance_to(spawn.global_position) > 0.01:
+					misplaced_players += 1
+		# Rolled "nothing" places nothing, so count what the log says was placed.
+		var expected_spawns: int = 0
+		for line: String in generator.last_spawn_log:
+			if not line.ends_with("→ nothing") and not line.ends_with("→ player"):
+				expected_spawns += 1
 		# Every used door must meet exactly one other used door at the same point.
 		for a: int in open_ends.size():
 			var partners: int = 0
@@ -243,8 +256,84 @@ func _test_builds(main: Node, generator: DungeonGenerator, count: int) -> void:
 	generator.seed_value = 0
 	_check(mismatched_doors == 0, "every connected door meets its partner in world space (%d bad)" % mismatched_doors)
 	_check(missing_plugs == 0, "every unused door is plugged (%d missing)" % missing_plugs)
-	_check(bad_spawn_counts == 0, "spawned enemies + pickups match spawn points in every build")
+	_check(bad_spawn_counts == 0, "spawned enemies + pickups match the spawn log in every build")
 	_check(misplaced_players == 0, "player lands on the START spawn every build")
+
+
+## Rolls each table many times with a seeded RNG; every row's share should match weight / total.
+func _test_table_weights() -> void:
+	var rolls: int = 22000
+	for path: String in ["res://data/tables/combat_enemy.tres", "res://data/tables/treasure_loot.tres", "res://data/tables/combat_weapon.tres"]:
+		var table: SpawnTable = load(path) as SpawnTable
+		var kind: SpawnPoint.Kind = SpawnPoint.Kind.ENEMY if path.contains("enemy") else SpawnPoint.Kind.WEAPON
+		var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+		rng.seed = 42
+		var counts: Dictionary[SpawnEntry, int] = {}
+		for i: int in rolls:
+			var entry: SpawnEntry = table.roll(rng)
+			counts[entry] = counts.get(entry, 0) + 1
+		var worst: float = 0.0
+		var parts: PackedStringArray = []
+		for entry: SpawnEntry in table.entries:
+			var expected: float = entry.weight / table.total_weight()
+			var got: float = float(counts.get(entry, 0)) / rolls
+			worst = maxf(worst, absf(got - expected))
+			parts.append("%s %.1f%% (%.1f%%)" % [entry.describe(kind), got * 100.0, expected * 100.0])
+		_check(worst < 0.015, "%s: %s" % [path.get_file(), ", ".join(parts)])
+
+
+## Each variant on the real Enemy scene: HP, scale, capsule and tint come from its EnemyData.
+func _test_enemy_variants(main: Node) -> void:
+	var scene: PackedScene = load("res://enemy/Enemy.tscn") as PackedScene
+	var base: Enemy = scene.instantiate() as Enemy
+	var base_radius: float = ((base.get_node("BodyShape") as CollisionShape3D).shape as CapsuleShape3D).radius
+	base.free()
+	for path: String in ["res://enemy/grunt.tres", "res://enemy/skitterer.tres", "res://enemy/bruiser.tres"]:
+		var data: EnemyData = load(path) as EnemyData
+		var enemy: Enemy = scene.instantiate() as Enemy
+		enemy.data = data
+		enemy.position = Vector3(0.0, -500.0, 0.0)
+		main.add_child(enemy)
+		await process_frame
+		var radius: float = ((enemy.get_node("BodyShape") as CollisionShape3D).shape as CapsuleShape3D).radius
+		var rig_scale: float = (enemy.get_node("Rig") as Node3D).scale.x
+		var torso: MeshInstance3D = enemy.get_node("Rig/Body/Torso") as MeshInstance3D
+		var health: Health = enemy.get_node("Health") as Health
+		var tinted: bool = torso.material_override == data.body_material
+		_check(health.max_hp == data.max_hp and is_equal_approx(rig_scale, data.body_scale)
+			and is_equal_approx(radius, base_radius * data.body_scale) and tinted,
+			"%s: %d HP, scale %.1f, capsule r %.2f, %s" % [data.display_name, health.max_hp, rig_scale, radius,
+				"tinted " + data.body_material.resource_path.get_file() if data.body_material else "scene burlap"])
+		enemy.queue_free()
+	await process_frame
+
+
+## F6's promise: rebuilding with the same seed gives the same layout and the same spawns.
+func _test_same_seed(generator: DungeonGenerator) -> void:
+	var differing: int = 0
+	var seeds: Array[int] = [7, 77, 777, 4165243132]
+	for s: int in seeds:
+		generator.generate(s)
+		var first: PackedStringArray = generator.last_spawn_log.duplicate()
+		await process_frame
+		generator.generate(generator.last_seed)
+		var second: PackedStringArray = generator.last_spawn_log.duplicate()
+		await process_frame
+		if first != second:
+			differing += 1
+			for i: int in maxi(first.size(), second.size()):
+				var a: String = first[i] if i < first.size() else "(none)"
+				var b: String = second[i] if i < second.size() else "(none)"
+				if a != b:
+					print("   seed %d differs: '%s' vs '%s'" % [s, a, b])
+	_check(differing == 0, "same seed twice gives identical spawn logs (%d of %d differ)" % [differing, seeds.size()])
+	generator.generate(1)
+	var one: PackedStringArray = generator.last_spawn_log.duplicate()
+	generator.generate(2)
+	_check(one != generator.last_spawn_log, "different seeds give different spawn logs")
+	print("   seed 1 spawn log:")
+	for line: String in one:
+		print("     " + line)
 
 
 func _ascii_map(plan: Array[DungeonGenerator.Placement]) -> PackedStringArray:

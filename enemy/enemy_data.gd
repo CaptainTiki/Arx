@@ -10,6 +10,10 @@ extends Resource
 @export var move_speed: float = 3.0
 ## False = never staggers when hit (bruisers). Still takes damage and flashes.
 @export var can_flinch: bool = true
+## Uniform size of the whole rig and its collision capsule. Applied on ready.
+@export var body_scale: float = 1.0
+## Palette material for torso and arms so variants read at a glance. Null = keep the scene's burlap.
+@export var body_material: Material
 
 @export_group("Attack")
 ## Starts WINDUP inside this distance (center to center).

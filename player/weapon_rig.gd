@@ -59,6 +59,8 @@ var is_blocking: bool:
 
 var _state: State = State.IDLE
 var _pending_weapon: WeaponData
+## Separate flag because a pending null (unequip to fists) is a real request.
+var _has_pending: bool = false
 var _hitbox_back_z: float = 0.0
 var _swing_speed: float = 1.0
 var _attack_buffer_left: float = 0.0
@@ -92,7 +94,9 @@ func update_combat(attack_pressed: bool, block_held: bool, delta: float) -> void
 		_attack_buffer_left = maxf(attack_buffer_time, delta)
 	match _state:
 		State.IDLE:
-			if block_held:
+			if weapon == null:
+				pass  # Fists: nothing to swing or block with.
+			elif block_held:
 				_enter_block()
 			elif _attack_buffer_left > 0.0:
 				try_swing()
@@ -118,13 +122,14 @@ func update_view(look: Vector2, delta: float, speed_ratio: float) -> void:
 	rotation = Vector3(deg_to_rad(_sway.y), deg_to_rad(_sway.x), deg_to_rad(_sway.x) * 0.5)
 
 
-## Swaps the held weapon. Mid-swing, mid-block or mid-equip it waits and applies on the next
-## return to IDLE, so a swap can never land inside active frames.
+## Swaps the held weapon; null = fists (no mesh, no swing, no block). Mid-swing it waits and
+## applies when the swing ends, so a swap never lands in active frames. During a block or an
+## equip it applies at once (restarting the raise), which keeps paused inventory swaps instant.
+## Only Inventory calls this.
 func equip(new_weapon: WeaponData) -> void:
-	if new_weapon == null:
-		return
-	if _state != State.IDLE:
+	if _state == State.SWING:
 		_pending_weapon = new_weapon
+		_has_pending = true
 		return
 	_apply_weapon(new_weapon)
 
@@ -208,13 +213,22 @@ func _exit_block() -> void:
 
 func _become_idle() -> void:
 	_state = State.IDLE
-	if _pending_weapon:
+	if _has_pending:
 		_apply_weapon(_pending_weapon)
 
 
 func _apply_weapon(new_weapon: WeaponData) -> void:
 	weapon = new_weapon
 	_pending_weapon = null
+	_has_pending = false
+	if weapon == null:
+		# Fists: nothing in hand. Back to IDLE (even out of an unfinished equip or a block) so
+		# pickups and equips keep working.
+		_state = State.IDLE
+		_sword_mesh.mesh = null
+		_hitbox.end_swing()
+		_anim.play(&"RESET")
+		return
 	_sword_mesh.mesh = weapon.view_mesh
 	_view_pivot.position = weapon.view_offset
 	_view_pivot.rotation_degrees = weapon.view_rotation

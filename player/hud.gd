@@ -1,19 +1,31 @@
 class_name Hud
 extends CanvasLayer
-## Player HUD: bars, crosshair, damage flash, death text.
+## Player HUD: bars, crosshair, interact prompt, damage flash, death text.
 
 @export var damage_flash_alpha: float = 0.35
 @export var damage_flash_time: float = 0.35
 ## %s is the interactable's prompt_text().
 @export var prompt_format: String = "[E] %s"
+## Tint for notices (e.g. "Inventory full") shown in the prompt line.
+@export var notice_color: Color = Color(0.878, 0.329, 0.149, 1.0)
 
 @onready var _health_bar: ProgressBar = %HealthBar
+@onready var _health_text: Label = %HealthText
 @onready var _stamina_bar: ProgressBar = %StaminaBar
 @onready var _damage_flash: ColorRect = %DamageFlash
 @onready var _death_label: Label = %DeathLabel
 @onready var _prompt_label: Label = %PromptLabel
 
 var _flash_tween: Tween
+var _notice_tween: Tween
+var _prompt_text: String = ""
+var _prompt_wanted: bool = false
+var _notice_active: bool = false
+var _prompt_color: Color
+
+
+func _ready() -> void:
+	_prompt_color = _prompt_label.get_theme_color(&"font_color")
 
 
 func bind(health: Health, stamina: Stamina) -> void:
@@ -36,17 +48,54 @@ func show_death() -> void:
 
 
 func show_prompt(text: String) -> void:
-	_prompt_label.text = prompt_format % text
-	_prompt_label.visible = true
+	_prompt_text = prompt_format % text
+	_prompt_wanted = true
+	_apply_prompt()
 
 
 func hide_prompt() -> void:
-	_prompt_label.visible = false
+	_prompt_wanted = false
+	_apply_prompt()
+
+
+## Takes over the prompt line for `duration` seconds; the normal prompt comes back afterwards.
+func show_notice(text: String, duration: float) -> void:
+	if _notice_tween:
+		_notice_tween.kill()
+	_notice_active = true
+	_prompt_label.text = text
+	_prompt_label.add_theme_color_override(&"font_color", notice_color)
+	_prompt_label.visible = true
+	_notice_tween = create_tween()
+	_notice_tween.tween_interval(duration)
+	_notice_tween.tween_callback(_end_notice)
+
+
+func is_notice_showing() -> bool:
+	return _notice_active
+
+
+func prompt_text_shown() -> String:
+	return _prompt_label.text if _prompt_label.visible else ""
+
+
+func _end_notice() -> void:
+	_notice_active = false
+	_prompt_label.add_theme_color_override(&"font_color", _prompt_color)
+	_apply_prompt()
+
+
+func _apply_prompt() -> void:
+	if _notice_active:
+		return
+	_prompt_label.text = _prompt_text
+	_prompt_label.visible = _prompt_wanted
 
 
 func _on_health_changed(current: int, maximum: int) -> void:
 	_health_bar.max_value = maximum
 	_health_bar.value = current
+	_health_text.text = "%d / %d" % [current, maximum]
 
 
 func _on_stamina_changed(value: float, maximum: float) -> void:

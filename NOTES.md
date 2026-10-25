@@ -1,12 +1,116 @@
-# Steps 1–3 — Swing & Block, Pickups, Generated Dungeon
+# Steps 1–5 — Swing & Block, Pickups, Generated Dungeon, Spawn Tables, Inventory
 
 Open in Godot 4.7, press F5. Main scene: `res://main/Main.tscn`. The step-1 room lives on as `res://tests/CombatArena.tscn`, the fixture for the combat smoke test; you can also open it and F6 it to fight one grunt in a known room.
 
-**Controls:** WASD move · Shift sprint · LMB swing · RMB block (hold) · E take · R restart · F5 new dungeon · Esc frees the mouse (click to recapture).
+**Controls:** WASD move · Shift sprint · LMB swing · RMB block (hold) · E take · Tab inventory · R restart · F5 new dungeon · F6 same dungeon again · Esc frees the mouse (click to recapture).
 
-Every Play builds a different floor of about 10 hand-built rooms, from a start room (you, plus a spare sword) to a glowing exit pad. The output log prints `Dungeon seed N`; put N in `DungeonGenerator.seed_value` to get that exact floor again. F5 throws the floor away and builds a new one. Weapons lie where spawn markers put them: the axe in the pillar room and the treasure room, the dagger in the treasure room. Look at one within 2.5 m and press E. It goes into your hand, and your old weapon lies where it was.
+Every Play builds a different floor of about 10 hand-built rooms, from a start room to a glowing exit pad. You start holding the Rusty Sword with an empty bag. Combat and treasure rooms roll what's in them from spawn tables. The output log prints `Dungeon seed N`, followed by one line per spawn point (`room 4 (CombatRoom_B) spawn 1 → skitterer`). Put N in `DungeonGenerator.seed_value`, or press F6, to get that exact floor and those exact spawns again. F5 builds a new one. Look at an item within 2.5 m and press E to put it in your bag; Tab opens the inventory to wear it.
 
-Grunts wake up when you get within 4 m. Each walks in, rears back with a red flash and a grunt (0.7 s, turning at most 180°/s to follow you), then lunges 0.9 m into the smash. After that it stands still, without turning, for 0.8 s of recovery plus a 1.5 s cooldown.
+Enemies wake up when you get within 4 m. Each walks in, rears back with a red flash and a grunt (its windup, turning at most its turn rate to follow you), then lunges into the strike. After that it stands still, without turning, through recovery and cooldown. There are three kinds; see Step 4.
+
+---
+
+## Step 5: paper doll and grid inventory
+
+### The model — `player/inventory.gd` (`Inventory`, on the Player)
+
+`bag` holds 6 × 4 = 24 squares (null = empty) and `equipped` maps each `ItemData.Slot` to its item. Every change emits `changed`, and the screen redraws from the model; slots never hold items of their own. `equip()` is the only route into `WeaponRig.equip()`; `unequip(WEAPON)` sends null, which means fists. RING and TRINKET can be worn but do nothing yet. The player starts with the sword equipped and an empty bag.
+
+**`armour` is a stand-in.** `ArmorData.armour` is a flat per-hit reduction, summed over what you wear: `Player.take_hit` applies `max(1, damage - total_armour())`. A block still zeroes the hit. This will be replaced by a real armour model. The iron cap (3) turns a grunt's 15 into 12. The HUD now prints HP on the health bar (`88 / 100`), so you can read that off the screen.
+
+### Armour pieces — `items/armor/*.tres` (`ArmorData`)
+
+| Item | Slot | armour |
+|---|---|---|
+| Rawhide Cap | HEAD | 1 |
+| Rawhide Vest | CHEST | 2 |
+| Rawhide Gloves | HANDS | 1 |
+| Rawhide Boots | FEET | 1 |
+| Iron Cap | HEAD | 3 |
+
+Every item now has a 32 × 32 palette icon, and the armour pieces have floor meshes. Both come from `tools/generate_placeholder_assets.gd` (`_write_armor()`). All five pieces are in **`data/tables/treasure_loot.tres`** (renamed from `treasure_weapon.tres`) at weight 1 each, alongside sword, axe and dagger at 2 each and nothing at 1. Each of the two treasure points rolls roughly a 50% weapon, 42% armour, 8% nothing.
+
+### Pickups
+
+- **E puts the item in the first free square** and the pickup frees itself. The step-2 swap-in-place rule is retired, and the start room's spare sword is gone.
+- **Bag full:** the pickup does a half turn around Y and back with a 0.15 m hop over 0.25 s, plays a dull "nope", and the prompt line reads `Inventory full` (orange) for 1 s. Knobs: `Pickup.reject_time` / `reject_hop`, `Player.inventory_full_text` / `notice_time`.
+
+### The screen — `ui/InventoryScreen.tscn`, instanced in `Player.tscn`
+
+Tab opens it over a paused game (`get_tree().paused`, mouse visible); Tab closes it. The paper doll has HEAD on top, WEAPON left of CHEST, RING and TRINKET on the right, and HANDS and FEET below. To its right is the 6 × 4 bag, then the stats (Armour, Weapon dmg, HP, Stamina), and a tooltip that follows the cursor over any filled slot (name, slot, damage or armour). All 24 bag squares (`ui/BagSlot.tscn`, `index` 0–23) and 7 doll slots (`ui/EquipSlot.tscn`, `slot`) are authored instances in the scene; nothing is generated.
+
+`PlayerIntent` runs while paused so Tab can close the screen, but ignores every other input then. The screen polls it (`consume_inventory_toggle()`) and asks it to free or capture the mouse, so `Input` is still only read in one place.
+
+### Drop rules
+
+Drag uses Godot's built-in drag and drop. The payload is `{ "item", "from_bag": index or -1, "from_slot": slot or -1 }`, and the preview is the item's icon. When a drop isn't allowed, `_can_drop_data` returns false and the cursor shows "no" before you let go.
+
+| From → to | Rule |
+|---|---|
+| Bag → bag | Always allowed. The target's item goes back to the source square (a swap; onto an empty square it's a move). |
+| Bag → equip slot | Only if `item.slot` matches the slot. The previous occupant goes into the source square. |
+| Equip slot → bag | Onto an empty square: unequip it there. Onto an item that fits the source slot: they trade places. Onto anything else: refused. |
+| Equip → equip | Refused for now (RING ↔ RING once there are two ring slots). |
+| Anything → background | Drop it in the world, 1 m in front of you (see below). |
+| Right-click a bag item | Equip it; whatever was worn takes its square. |
+| Right-click an equipped item | Unequip to the first free square; refused (with the nope) if the bag is full. |
+
+Weapon changes made while paused are already in your hand when you unpause. The rig only queues an equip while a swing is in progress, which can't happen while paused, so a swap never lands mid-swing.
+
+### Drop to world
+
+Dropping on the screen background takes the item out of the bag or slot and spawns a `Pickup.tscn` 1 m in front of you on the floor, under `Dungeon/Spawned`. A short ray (0.5 m up, world layer) pulls the drop back 0.4 m from any wall in the way, so it can't vanish into stone. Knobs: `Player.drop_distance`, `drop_probe_height`, `drop_wall_margin`, `drop_wall_mask`, `drop_parent`, `pickup_scene`. Dropping your weapon leaves you with fists: no mesh, no swing, no block. Pick it up again with E and wear it from the bag. Dropped items are cleared on F5/F6 along with everything else in `Spawned`.
+
+---
+
+## Step 4: spawn tables
+
+### The rule
+
+`SpawnPoint` checks **its table first, then its fixed fallback**. With a `table` set, the table is rolled; a "nothing" row places nothing. With no table, the step-3 `fixed_scene` / `fixed_item` is used. START (just the player since step 5) and EXIT stay fixed. Combat and treasure spawn points now point at tables; they keep their old fixed values as the fallback if you clear the table.
+
+Rolls use the generator's own `RandomNumberGenerator`. The RNG that planned the layout carries straight on into the spawn loop, in build order, so a seed reproduces the layout and every spawn. Step-3 seeds still give the same layouts.
+
+### Tables — `res://data/tables/` (`SpawnTable` of `SpawnEntry` rows)
+
+| Table | Rows (weight → share) | Used by |
+|---|---|---|
+| `combat_enemy.tres` | grunt 5 (45%), skitterer 3 (27%), bruiser 1 (9%), nothing 2 (18%) | Every ENEMY point in a COMBAT room: CombatRoom_A ×1, CombatRoom_B ×2, CombatRoom_Pillars ×2 |
+| `combat_weapon.tres` | sword 1, axe 1, dagger 1 (12.5% each), nothing 5 (62.5%) | CombatRoom_Pillars' WEAPON point |
+| `treasure_loot.tres` | sword 2, axe 2, dagger 2 (16.7% each); rawhide cap, vest, gloves, boots and iron cap 1 each (8.3% each); nothing 1 (8.3%) | Both TreasureRoom WEAPON points (the kind name is historical; they roll armour too) |
+
+A row's `enemy` is read by ENEMY points and its `item` by WEAPON points; a row with neither is "nothing". The room's editor warnings flag a table carrying the wrong kind of row, which would silently spawn nothing. An average 2-point combat room holds about 1.6 enemies, and one bruiser in a pillar room is the spike. `tools/dungeon_tests.gd` rolls each table 22,000 times and checks the shares match the weights (they're within 0.4%).
+
+### Enemy variants — `enemy/*.tres` (`EnemyData`)
+
+| | grunt | skitterer | bruiser |
+|---|---|---|---|
+| `max_hp` | 100 | 40 | 250 |
+| `move_speed` | 3.0 | 5.5 (faster than your 5.0 walk) | 2.2 |
+| `can_flinch` | true | true | **false** |
+| `trigger_range` | 1.8 | 1.4 | 2.2 |
+| `attack_reach` | 2.3 | 1.6 | 2.8 |
+| `damage` | 15 | 8 | 35 (kills you in 3) |
+| `windup_time` | 0.7 | **0.35** | 1.1 |
+| `strike_time` | 0.2 | 0.15 | 0.3 |
+| `recover_time` | 0.8 | 0.4 | 1.2 |
+| `cooldown_time` | 1.5 | 0.6 | 2.0 |
+| `strike_lunge` | 0.9 | 1.3 | 0.6 |
+| `windup_turn_rate` | 180 | 360 | 90 |
+| `body_scale` | 1.0 | 0.7 | 1.4 |
+| `body_material` | (scene burlap) | `hide_skitterer.tres`, pale bone `c9c0b9` | `hide_bruiser.tres`, blood red `84191c` |
+
+`body_scale` sizes the whole visual `Rig`, legs included, plus the collision capsule, HP bar height and tell light. Scaling only the `Body` node in this scene would leave the legs grunt-sized. `body_material` goes on torso and arms as a `material_override`; the hit-flash overlay still works on top. Everything else uses the grunt's defaults (aggro 4 m, chase turn 460°/s, flinch 0.3 s, and so on).
+
+**Tuning order from the handoff:**
+- **Skitterer:** a nuisance means raise `damage`; unfair means raise `windup_time` before touching anything else.
+- **Bruiser:** a sponge means lower `max_hp` and raise `damage`. It should kill you in 3.
+- **Dagger vs bruiser:** `can_flinch = false` means no stunlock, by design.
+
+### Debug
+
+- **Spawn log** (`DungeonGenerator.print_spawn_log`, on by default): one line per spawn point after the seed line. Lines read `→ grunt`, `→ nothing`, `→ fixed rusty sword` or `→ player`. The current floor's lines are also kept in `last_spawn_log`.
+- **F6** rebuilds from `last_seed`; F5 rolls a new seed. To diff two runs, copy the log lines from both. The dungeon test does exactly that for four seeds and requires them identical.
 
 ---
 
@@ -19,7 +123,9 @@ Grunts wake up when you get within 4 m. Each walks in, rears back with a red fla
 | `catalog` | `dungeon/catalog.tres` | Room pool: its `rooms` list plus every `.tscn` in `scan_folder` (`res://dungeon/rooms`) |
 | `target_rooms` | 10 | Rooms per floor, START and EXIT included. The last two are forced TREASURE, then EXIT. |
 | `max_attempts` | 200 | Overlap failures allowed before a layout is abandoned and restarted |
-| `seed_value` | 0 | 0 = random every generate. Anything else rebuilds the same floor (restarts derive from it too). |
+| `seed_value` | 0 | 0 = random every generate. Anything else rebuilds the same floor and spawns (restarts derive from it too). |
+| `enemy_scene` / `pickup_scene` | `Enemy.tscn` / `Pickup.tscn` | What a rolled ENEMY row (with its `EnemyData` set) or a WEAPON spawn instantiates |
+| `print_spawn_log` | true | One log line per spawn point after the seed line |
 | `corridor_chance` | 0.3 | Chance the next normal room is a corridor rather than combat |
 | `max_corridor_chain` | 2 | Corridors in a row, at most |
 | `recency_bias` | 2.0 | Which open door to grow from: 1 = any (bushy), higher = the newest (snakier, more hallway) |
@@ -47,9 +153,9 @@ Grid: 4 m cells; cell `(x, z)` sits at world `(4x, 0, 4z)`. A door's marker sits
 
 1. **Duplicate** any scene in `res://dungeon/rooms/` and set `type` / `weight` / `footprint` on its root. Anything in that folder is in the catalog automatically.
 2. **Move CSG boxes** under `Geometry`. `Floor` and `Ceiling` cover the footprint. Walls sit *inside* the footprint edge, 0.3 m thick, so neighbours end up back to back. Each door needs a 2 × 3 m subtraction box (`operation = Subtraction`) through its wall; the existing `Doorway*` boxes are ready to move.
-3. **Move markers.** A `Door` goes on the footprint edge at a cell-edge center: one coordinate on the boundary (0 or 4 × cells), the other at 4k + 2. Set its `dir`; the marker turns itself to face out. `SpawnPoint`s go anywhere inside the footprint: `ENEMY` needs `fixed_scene`, `WEAPON` needs `fixed_item`, and START needs exactly one `PLAYER`.
+3. **Move markers.** A `Door` goes on the footprint edge at a cell-edge center: one coordinate on the boundary (0 or 4 × cells), the other at 4k + 2. Set its `dir`; the marker turns itself to face out. `SpawnPoint`s go anywhere inside the footprint. Each `ENEMY` or `WEAPON` point needs a `table` (from `res://data/tables/`) or a fixed fallback (`fixed_scene` / `fixed_item`), and START needs exactly one `PLAYER`.
 
-The Room root shows editor warnings, refreshed as you drag markers. It warns when a door is off an edge center, a door has no doorway cutter within 0.5 m, a spawn is outside the footprint, a spawn is missing its scene or item, or a START room has no player spawn. The generator skips any room with warnings and logs why.
+The Room root shows editor warnings, refreshed as you drag markers. It warns when a door is off an edge center, a door has no doorway cutter within 0.5 m, a spawn is outside the footprint, a spawn has neither a table nor a fixed value, a table holds the wrong kind of row, or a START room has no player spawn. The generator skips any room with warnings and logs why.
 
 **Doorway size:** the handoff says "2-cell-wide opening". Cells are 4 m and doors sit at the center of a single cell edge, so I read that as **2 m** wide, 3 m tall. Corridors use the same 2 m doorway rather than a fully open end, so one shared `DoorPlug.tscn` (2.1 × 3.05 m) fits every unused door.
 
@@ -59,7 +165,8 @@ The Room root shows editor warnings, refreshed as you drag markers. It warns whe
 |---|---|
 | `dungeon/room.gd` (`Room`, @tool) | Room contract, `get_doors()`, `get_spawn_points()`, authoring checks |
 | `dungeon/door.gd` (`Door`, @tool) | `dir`, `plug_scene`, `cell`, `used`, `opposite()`, plus direction/offset/edge helpers |
-| `dungeon/spawn_point.gd` (`SpawnPoint`, @tool) | `kind`, `fixed_scene`, `fixed_item` |
+| `dungeon/spawn_point.gd` (`SpawnPoint`, @tool) | `kind`, `table` (rolled first), `fixed_scene`, `fixed_item` (fallback) |
+| `dungeon/spawn_table.gd` / `spawn_entry.gd` | `SpawnTable.roll(rng)`; `SpawnEntry` rows with `weight`, `enemy`, `item` |
 | `dungeon/room_catalog.gd` (`RoomCatalog`) | `rooms` plus `scan_folder` |
 | `dungeon/dungeon_generator.gd` (`DungeonGenerator`) | Plan (pure data) → build (rooms, plugs, spawns) |
 | `dungeon/DoorPlug.tscn` | Default wall chunk, added as a child of each unused door marker |
@@ -101,7 +208,7 @@ Edit pose keys in the editor freely. Don't hand-move the two method keys; `equip
 
 ### Equip
 
-`WeaponRig.equip(weapon)` swaps `SwordMesh.mesh`, sets `ViewPivot` from `view_offset` / `view_rotation`, resizes the hitbox from `attack_reach`, rewrites swing timing, then plays `equip` (0.3 s, rises from below, not interruptible). Called mid-swing, mid-block or mid-equip, it queues and applies on the next return to IDLE, so it never swaps during active frames. `Player.starting_weapon` is equipped on ready.
+`WeaponRig.equip(weapon)` swaps `SwordMesh.mesh`, sets `ViewPivot` from `view_offset` / `view_rotation`, resizes the hitbox from `attack_reach`, rewrites swing timing, then plays `equip` (0.3 s, rises from below; you can't swing or block until it ends). Since step 5 only `Inventory` calls it. Called mid-swing, it queues and applies when the swing ends, so it never swaps during active frames. During a block or another equip it applies at once, which is what makes paused inventory swaps instant. `equip(null)` means fists: no mesh, no swing, no block, and the rig drops straight back to IDLE. `Player.starting_weapon` is equipped (through the Inventory) on ready.
 
 ### Pickups and interact
 
@@ -112,10 +219,9 @@ Edit pose keys in the editor freely. Don't hand-move the two method keys; `equip
 | `items/Pickup.tscn → Glint` + `AnimationPlayer` | energy / range | 0.1 → 0.35 pulse over 2.4 s, 0.7 m | Palette `fff3c4`. Set the Glint invisible to drop it. |
 | `Player.tscn → HUD` | `prompt_format` | `"[E] %s"` | `%s` is `prompt_text()`, e.g. "Take Woodcutter's Axe" |
 
-- **Swap-in-place:** taking a weapon calls `pickup.set_item(old_weapon)`. The pickup never frees and nothing spawns, so the "drop" is always exactly where the pickup was. `set_item` re-centers the new mesh over the pickup and rests it on the floor, so a dagger can replace an axe without floating.
-- **Non-weapon items:** `Pickup.interact()` only prints the name and slot for now (step 5).
+- **Swap-in-place (retired in step 5):** E now puts the item in the bag and the pickup frees itself; see Step 5. `set_item` still re-centers any item's mesh over the pickup and rests it on the floor, which drops and loot rely on.
 - **Blocked while busy:** while swinging, blocking or equipping there's no target and no prompt, so you can't vacuum loot with block held.
-- **Where it lives:** the target is cached in `Player._update_interact()`, and the HUD only updates when the target or its prompt text changes. The press is handled before the refresh, so the prompt reflects a swap in the same frame.
+- **Where it lives:** the target is cached in `Player._update_interact()`, and the HUD only updates when the target or its prompt text changes. The press is handled before the refresh, so the prompt reflects the result in the same frame.
 
 ---
 
@@ -281,10 +387,10 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 | Command (from the project root) | What it does |
 |---|---|
 | `godot --headless --path . --script res://tools/generate_placeholder_assets.gd` | Regenerates the palette PNG, the synthesized placeholder SFX, the weapon meshes and the 32×32 weapon icons (deterministic) |
-| `godot --headless --path . --script res://tools/dungeon_tests.gd [-- 1000 20]` | Generator checks. It tests `rotate_cell` against real transforms, every catalog door at every rotation, that the authoring warnings fire on broken rooms, and a batch of seeded layouts (stats as above). It then does real builds, where every connected door must meet its partner, every other door must be plugged, and spawn counts and player placement must match. The arguments are batch size and build count. Exit code 0 means pass. |
+| `godot --headless --path . --script res://tools/dungeon_tests.gd [-- 1000 20]` | Generator checks. It tests `rotate_cell` against real transforms, every catalog door at every rotation, that the authoring warnings fire on broken rooms, and a batch of seeded layouts (stats as above). It then does real builds, where every connected door must meet its partner, every other door must be plugged, and spawned nodes must match the spawn log, with the player on the start spawn. Finally, **spawn tables**: each table rolled 22,000 times against its weights, each enemy variant's HP, scale, capsule and tint on the real scene, and the same seed built twice giving identical spawn logs. It prints seed 1's log. The arguments are batch size and build count. Exit code 0 means pass. |
 | `godot --path . --script res://tools/capture_dungeon.gd -- out.png 1 2 3` | Opens a window and renders a top-down view (ceilings hidden) and the view from spawn for each seed given |
-| `godot --headless --path . --script res://tools/combat_smoke_test.gd` | Drives `tests/CombatArena.tscn` (the step-1 room, so it stays deterministic) with input events, in two parts. **Part A (weapons):** the prompt, interact being blocked while blocking, swap-in-place both ways, an equip during a swing waiting for IDLE, and a probe per weapon. The probe measures swing length, the hitbox open/close times, lunge distance, stamina spent and damage dealt against that weapon's data. **Part B (fresh scene, grunt):** data applied, strike lunge, block, the windup turn cap, facing and position locked through RECOVER/COOLDOWN, hit-and-back-off caught, an early retreat escaping, and a punish to the kill. Exit code 0 means pass. |
-| `godot --path . --script res://tools/capture_views.gd -- out.png` | Opens a window and renders a contact sheet: pickups on the floor with the prompt, each weapon at rest, mid-swing and blocking, then the hit puff and block spark |
+| `godot --headless --path . --script res://tools/combat_smoke_test.gd` | Drives `tests/CombatArena.tscn` (the step-1 room, so it stays deterministic) with input events, in three parts. **Part A (inventory and weapons):** E into the bag (and ignored while blocking); Tab pausing; every drop rule, driven through the slots' own drop handlers with real payloads; the right-click shortcuts; the tooltip and stats. Then drop to world and pick it back up, fists unable to swing, the iron cap turning 15 into 12 (and 2 into 1), the full-bag flip and notice, an equip during a swing waiting for it to end, and a probe per weapon. The probe measures swing length, the hitbox open/close times, lunge distance, stamina spent and damage dealt against that weapon's data. **Part B (fresh scene, grunt):** data applied, strike lunge, block, the windup turn cap, facing and position locked through RECOVER/COOLDOWN, hit-and-back-off caught, an early retreat escaping, and a punish to the kill. **Part C (fresh scene, variants):** the bruiser hits for 35 and doesn't flinch from a sword hit in RECOVER; the skitterer closes faster than your walk, winds up in 0.35 s and hits for 8. Exit code 0 means pass. |
+| `godot --path . --script res://tools/capture_views.gd -- out.png` | Opens a window and renders a contact sheet: pickups on the floor with the prompt, each weapon at rest, mid-swing and blocking, the hit puff and block spark, a skitterer / grunt / bruiser lineup, the inventory screen with a tooltip, and a pickup mid-flip off a full bag |
 
 ---
 
@@ -294,7 +400,12 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - **`SwordMesh` is the hand.** Its origin is the grip, so swings rotate around the hand. Since step 2 it holds a single generated `view_mesh` per weapon instead of child boxes. It sits under a new `ViewPivot` node that carries `view_offset` / `view_rotation`. The AnimationPlayer owns `SwordMesh`'s transform, so the nudge needs its own node.
 - **No `AnimationPlayer.speed_scale`.** Swing speed is passed per `play()`, so `block_*` and `equip` keep their authored timing.
 - **The lunge duration comes from the weapon** (swing start → middle of the active window) instead of the removed `Player.lunge_duration`. A fixed 0.18 s had the axe finish its step before the hit.
-- **EQUIP is a fourth rig state** (with IDLE, SWING, BLOCK). While equipping you can't swing, block, interact or equip again; extra equips queue.
+- **EQUIP is a fourth rig state** (with IDLE, SWING, BLOCK). While equipping you can't swing, block or interact. Only SWING queues an equip (step 5 narrowed this from "anything but IDLE"); the inventory pauses the game, so an equip raise could otherwise never finish and would hold later swaps hostage.
+- **The inventory screen is instanced inside `Player.tscn`**, next to the HUD, so it reaches the player's `%Inventory` directly. `Player` exposes read-only `inventory`, `health`, `stamina` and `intent` for it.
+- **The drag preview is a tiny scene** (`ui/DragPreview.tscn`), instantiated per drag. `set_drag_preview()` takes ownership of the control and frees it when the drag ends, so a pre-placed node can't be reused. Together with the dropped Pickup, these are the only runtime instantiations outside the generator.
+- **Background drops go to the world only over the true background.** The paper-doll panel and the bag grid stop the mouse and refuse drops, so a drag that misses a square by a few pixels shows "no" instead of dumping the item on the floor.
+- **Drops are pulled back from walls** by a short ray, so an item dropped while facing a wall stays reachable.
+- **The HUD prints HP on the health bar**, so the armour check ("12, not 15") is readable without the inventory open.
 - **The enemy body is a small rig:** `Rig` → `Legs`, `Body` (pelvis) → Torso, Head, Eyes, both arms, Club. The `die` anim tips `Rig` over backward. Every mesh shares one local-to-scene overlay material for the hit flash.
 - **`EnemyData` has more than the 1.1 spec.** `aggro_range`, `chase_turn_rate`, the flinch, knockback and despawn values, and the hit-flash colors and timings moved in too, so `enemy.gd` has no tuning numbers left.
 - **COOLDOWN is its own state** rather than a timer inside CHASE. That makes "no tracking, no movement" explicit, and it shows up in `get_state_name()` for debugging.
@@ -308,7 +419,10 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - **Door markers rotate themselves** from `dir` (−Z out through the doorway). Plugs are added as children of the unused door marker, so they sit at its exact transform and are freed with the room.
 - **`Spawned` is pre-authored** under `Dungeon` in `Main.tscn` (nodes aren't created at runtime). Regenerating frees every other `Dungeon` child and empties `Spawned`.
 - **The HUD stays inside `Player.tscn`** rather than becoming a `Main` child. Player drives it through `%HUD`, and moving it would only add wiring.
-- **The Player starts disabled** (`process_mode` Disabled in `Main.tscn`). `Main._ready()` generates the floor, places the player, then enables it. F5 goes through `PlayerIntent.regenerate_pressed`, read by `Main` via `Player.intent`, so `Input` is still only touched in one place.
+- **The Player starts disabled** (`process_mode` Disabled in `Main.tscn`). `Main._ready()` generates the floor, places the player, then enables it. F5 goes through `PlayerIntent.regenerate_pressed`, read by `Main` via `Player.intent`, so `Input` is still only touched in one place. F6 (`regenerate_same_pressed`) works the same way.
+- **Rolled enemies use the generator's `enemy_scene`** with the row's `EnemyData` set before the node enters the tree. `fixed_scene` is only read by the no-table fallback, as in step 3.
+- **`body_scale` scales the `Rig`, not just `Body`.** In this scene `Body` is the pelvis and upper body, so scaling it alone would leave grunt-sized legs. The capsule shape is local to scene and resized, not node-scaled, because physics doesn't like scaled shapes.
+- **Tints are two palette materials** (`hide_skitterer`, `hide_bruiser`) set from `EnemyData.body_material`, per the handoff's "three greybox materials is fine". The grunt keeps the scene's burlap.
 
 ## Known limitations
 

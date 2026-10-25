@@ -1,0 +1,323 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://ui/inventory_screen.gd" id="1_screen"]
+[ext_resource type="PackedScene" path="res://ui/BagSlot.tscn" id="2_bag_slot"]
+[ext_resource type="PackedScene" path="res://ui/EquipSlot.tscn" id="3_equip_slot"]
+[ext_resource type="AudioStream" path="res://audio/sfx/nope.wav" id="4_nope"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_doll"]
+bg_color = Color(0.055, 0.047, 0.071, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.231, 0.216, 0.251, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tooltip"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.055, 0.047, 0.071, 0.96)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.584, 0.549, 0.565, 1)
+
+[node name="InventoryScreen" type="CanvasLayer"]
+process_mode = 3
+layer = 5
+script = ExtResource("1_screen")
+
+[node name="Root" type="ColorRect" parent="."]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.02, 0.018, 0.026, 0.86)
+
+[node name="Title" type="Label" parent="Root"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_top = 40.0
+offset_right = 200.0
+offset_bottom = 70.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.886, 0.753, 0.541, 1)
+theme_override_font_sizes/font_size = 22
+text = "INVENTORY"
+horizontal_alignment = 1
+
+[node name="PaperDoll" type="Panel" parent="Root"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -380.0
+offset_top = -200.0
+offset_right = -80.0
+offset_bottom = 120.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_doll")
+
+[node name="HeadSlot" parent="Root/PaperDoll" instance=ExtResource("3_equip_slot")]
+layout_mode = 0
+offset_left = 118.0
+offset_top = 12.0
+offset_right = 182.0
+offset_bottom = 76.0
+slot = 1
+
+[node name="WeaponSlot" parent="Root/PaperDoll" instance=ExtResource("3_equip_slot")]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 88.0
+offset_right = 88.0
+offset_bottom = 216.0
+slot = 0
+
+[node name="ChestSlot" parent="Root/PaperDoll" instance=ExtResource("3_equip_slot")]
+layout_mode = 0
+offset_left = 118.0
+offset_top = 88.0
+offset_right = 182.0
+offset_bottom = 184.0
+slot = 2
+
+[node name="RingSlot" parent="Root/PaperDoll" instance=ExtResource("3_equip_slot")]
+layout_mode = 0
+offset_left = 212.0
+offset_top = 88.0
+offset_right = 264.0
+offset_bottom = 140.0
+slot = 5
+
+[node name="TrinketSlot" parent="Root/PaperDoll" instance=ExtResource("3_equip_slot")]
+layout_mode = 0
+offset_left = 212.0
+offset_top = 150.0
+offset_right = 264.0
+offset_bottom = 202.0
+slot = 6
+
+[node name="HandsSlot" parent="Root/PaperDoll" instance=ExtResource("3_equip_slot")]
+layout_mode = 0
+offset_left = 84.0
+offset_top = 236.0
+offset_right = 148.0
+offset_bottom = 300.0
+slot = 3
+
+[node name="FeetSlot" parent="Root/PaperDoll" instance=ExtResource("3_equip_slot")]
+layout_mode = 0
+offset_left = 152.0
+offset_top = 236.0
+offset_right = 216.0
+offset_bottom = 300.0
+slot = 4
+
+[node name="Bag" type="GridContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -40.0
+offset_top = -200.0
+offset_right = 316.0
+offset_bottom = 36.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/h_separation = 4
+theme_override_constants/v_separation = 4
+columns = 6
+
+[node name="BagSlot0" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 0
+
+[node name="BagSlot1" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 1
+
+[node name="BagSlot2" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 2
+
+[node name="BagSlot3" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 3
+
+[node name="BagSlot4" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 4
+
+[node name="BagSlot5" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 5
+
+[node name="BagSlot6" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 6
+
+[node name="BagSlot7" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 7
+
+[node name="BagSlot8" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 8
+
+[node name="BagSlot9" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 9
+
+[node name="BagSlot10" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 10
+
+[node name="BagSlot11" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 11
+
+[node name="BagSlot12" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 12
+
+[node name="BagSlot13" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 13
+
+[node name="BagSlot14" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 14
+
+[node name="BagSlot15" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 15
+
+[node name="BagSlot16" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 16
+
+[node name="BagSlot17" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 17
+
+[node name="BagSlot18" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 18
+
+[node name="BagSlot19" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 19
+
+[node name="BagSlot20" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 20
+
+[node name="BagSlot21" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 21
+
+[node name="BagSlot22" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 22
+
+[node name="BagSlot23" parent="Root/Bag" instance=ExtResource("2_bag_slot")]
+layout_mode = 2
+index = 23
+
+[node name="Stats" type="VBoxContainer" parent="Root"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -40.0
+offset_top = 56.0
+offset_right = 316.0
+offset_bottom = 150.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ArmourLabel" type="Label" parent="Root/Stats"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.788, 0.753, 0.725, 1)
+theme_override_font_sizes/font_size = 14
+text = "ArmourLabel"
+
+[node name="WeaponLabel" type="Label" parent="Root/Stats"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.788, 0.753, 0.725, 1)
+theme_override_font_sizes/font_size = 14
+text = "WeaponLabel"
+
+[node name="HPLabel" type="Label" parent="Root/Stats"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.788, 0.753, 0.725, 1)
+theme_override_font_sizes/font_size = 14
+text = "HPLabel"
+
+[node name="StaminaLabel" type="Label" parent="Root/Stats"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.788, 0.753, 0.725, 1)
+theme_override_font_sizes/font_size = 14
+text = "StaminaLabel"
+
+[node name="Hint" type="Label" parent="Root"]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -400.0
+offset_top = -60.0
+offset_right = 400.0
+offset_bottom = -36.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.584, 0.549, 0.565, 1)
+theme_override_font_sizes/font_size = 13
+text = "Tab close   ·   drag to move or equip   ·   right-click equip / unequip   ·   drop on the background to put it on the floor"
+horizontal_alignment = 1
+
+[node name="Tooltip" type="PanelContainer" parent="Root"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 0
+offset_right = 120.0
+offset_bottom = 60.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_tooltip")
+
+[node name="TooltipLabel" type="Label" parent="Root/Tooltip"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.949, 0.886, 0.749, 1)
+theme_override_font_sizes/font_size = 13
+text = "Item
+Slot
+Stat"
+
+[node name="NopeSfx" type="AudioStreamPlayer" parent="."]
+unique_name_in_owner = true
+stream = ExtResource("4_nope")
+volume_db = -4.0

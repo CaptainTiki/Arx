@@ -1,6 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://items/pickup.gd" id="1_pickup"]
+[ext_resource type="AudioStream" path="res://audio/sfx/nope.wav" id="2_nope"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_interact"]
 size = Vector3(0.45, 0.25, 1)
@@ -53,7 +54,10 @@ unique_name_in_owner = true
 position = Vector3(0, 0.125, 0)
 shape = SubResource("BoxShape3D_interact")
 
-[node name="Mesh" type="MeshInstance3D" parent="."]
+[node name="Flip" type="Node3D" parent="."]
+unique_name_in_owner = true
+
+[node name="Mesh" type="MeshInstance3D" parent="Flip"]
 unique_name_in_owner = true
 rotation = Vector3(-1.5708, 0, 0)
 
@@ -62,6 +66,12 @@ position = Vector3(0, 0.3, 0)
 light_color = Color(1, 0.953, 0.769, 1)
 light_energy = 0.22
 omni_range = 0.7
+
+[node name="NopeSfx" type="AudioStreamPlayer3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 0.2, 0)
+stream = ExtResource("2_nope")
+volume_db = -2.0
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]
 libraries = {

@@ -5,6 +5,7 @@
 [ext_resource type="Resource" path="res://dungeon/catalog.tres" id="3_catalog"]
 [ext_resource type="PackedScene" path="res://items/Pickup.tscn" id="4_pickup"]
 [ext_resource type="PackedScene" path="res://player/Player.tscn" id="5_player"]
+[ext_resource type="PackedScene" path="res://enemy/Enemy.tscn" id="6_enemy"]
 [ext_resource type="Script" path="res://fx/fx_pool.gd" id="7_fx"]
 [ext_resource type="PackedScene" path="res://fx/HitPuff.tscn" id="8_hit_puff"]
 [ext_resource type="PackedScene" path="res://fx/BlockSpark.tscn" id="9_block_spark"]
@@ -38,6 +39,7 @@ dungeon = NodePath("../Dungeon")
 spawned = NodePath("../Dungeon/Spawned")
 player = NodePath("../Player")
 pickup_scene = ExtResource("4_pickup")
+enemy_scene = ExtResource("6_enemy")
 
 [node name="FX" type="Node3D" parent="."]
 script = ExtResource("7_fx")
@@ -64,7 +66,9 @@ unique_name_in_owner = true
 
 [node name="BlockSpark4" parent="FX/BlockSparks" instance=ExtResource("9_block_spark")]
 
-[node name="Player" parent="." node_paths=PackedStringArray("fx") instance=ExtResource("5_player")]
+[node name="Player" parent="." node_paths=PackedStringArray("fx", "drop_parent") instance=ExtResource("5_player")]
 unique_name_in_owner = true
 process_mode = 4
 fx = NodePath("../FX")
+pickup_scene = ExtResource("4_pickup")
+drop_parent = NodePath("../Dungeon/Spawned")

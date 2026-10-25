@@ -2,10 +2,23 @@ class_name Player
 extends CharacterBody3D
 ## First-person controller. Reads PlayerIntent, moves and aims, forwards combat input to the WeaponRig.
 
-## Equipped on ready.
+## Equipped (through the Inventory) on ready. The bag starts empty.
 @export var starting_weapon: WeaponData
 ## Pooled hit/block particles in the level (Main/FX). Optional, so Player.tscn still runs on its own.
 @export var fx: FxPool
+
+@export_group("Dropping")
+## What a dropped item becomes. Same scene the generator uses for loot.
+@export var pickup_scene: PackedScene
+## Dropped pickups are added here (Dungeon/Spawned in Main, so they're cleared on regenerate).
+@export var drop_parent: Node3D
+## How far ahead of your feet a dropped item lands.
+@export var drop_distance: float = 1.0
+## Height of the ray that keeps a drop from landing inside a wall.
+@export var drop_probe_height: float = 0.5
+## How far a drop is pulled back from a wall the ray hits.
+@export var drop_wall_margin: float = 0.4
+@export_flags_3d_physics var drop_wall_mask: int = 1
 
 @export_group("Movement")
 @export var walk_speed: float = 5.0
@@ -25,13 +38,18 @@ extends CharacterBody3D
 @export var hurt_shake_deg: float = 1.2
 @export var hurt_shake_time: float = 0.25
 @export var death_restart_delay: float = 2.5
+## Shown under the crosshair when a pickup bounces off a full bag.
+@export var inventory_full_text: String = "Inventory full"
+@export var notice_time: float = 1.0
 
 @onready var _intent: PlayerIntent = %PlayerIntent
 @onready var _health: Health = %Health
 @onready var _stamina: Stamina = %Stamina
+@onready var _inventory: Inventory = %Inventory
 @onready var _head: Node3D = %Head
 @onready var _weapon_rig: WeaponRig = %WeaponRig
 @onready var _hud: Hud = %HUD
+@onready var _inventory_screen: InventoryScreen = %InventoryScreen
 @onready var _hurt_sfx: AudioStreamPlayer = %HurtSfx
 @onready var _interact_ray: RayCast3D = %InteractRay
 
@@ -44,16 +62,26 @@ var _dead: bool = false
 var _interact_target: Node3D
 var _interact_prompt: String = ""
 
-## Read-only access for scene-level debug keys (Main reads regenerate_pressed).
+## Read-only access for scene-level code (Main's debug keys, the inventory screen, pickups).
 var intent: PlayerIntent:
 	get:
 		return _intent
+var inventory: Inventory:
+	get:
+		return _inventory
+var health: Health:
+	get:
+		return _health
+var stamina: Stamina:
+	get:
+		return _stamina
 
 
 func _ready() -> void:
 	_hud.bind(_health, _stamina)
 	_health.died.connect(_on_died)
-	_weapon_rig.equip(starting_weapon)
+	_inventory.equip(starting_weapon)
+	_inventory_screen.bind(self)
 
 
 func _process(delta: float) -> void:
@@ -84,7 +112,9 @@ func take_hit(hit: HitInfo) -> void:
 		# v1: infinite block, zero damage.
 		_weapon_rig.play_block_impact()
 		return
-	_health.take_hit(hit)
+	# PLACEHOLDER armour: flat reduction, never below 1.
+	var damage: int = maxi(1, hit.damage - _inventory.total_armour())
+	_health.take_hit(HitInfo.new(damage, hit.source, hit.direction, hit.blockable))
 	_hud.flash_damage()
 	_weapon_rig.shake(hurt_shake_deg, hurt_shake_time)
 	_hurt_sfx.play()
@@ -102,14 +132,30 @@ func apply_lunge(distance: float, duration: float) -> void:
 	_lunge_time = 0.0
 
 
-## Swap-in-place: we take the pickup's weapon and the pickup ends up holding the one we had.
-func swap_weapon(pickup: Pickup) -> void:
-	var incoming: WeaponData = pickup.item as WeaponData
-	if incoming == null or not _weapon_rig.can_interact():
+## Puts `item` on the floor about drop_distance ahead as a new Pickup, pulled back from any wall
+## in the way so it can always be picked up again.
+func drop_item(item: ItemData) -> void:
+	if item == null or pickup_scene == null or drop_parent == null:
 		return
-	var old: WeaponData = _weapon_rig.weapon
-	_weapon_rig.equip(incoming)
-	pickup.set_item(old)
+	var forward: Vector3 = -global_basis.z
+	forward.y = 0.0
+	forward = forward.normalized()
+	var probe_from: Vector3 = global_position + Vector3.UP * drop_probe_height
+	var landing: Vector3 = probe_from + forward * drop_distance
+	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(probe_from, landing, drop_wall_mask, [get_rid()])
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		landing = (hit["position"] as Vector3) - forward * drop_wall_margin
+	var pickup: Pickup = pickup_scene.instantiate() as Pickup
+	pickup.position = drop_parent.to_local(Vector3(landing.x, global_position.y, landing.z))
+	pickup.rotation.y = rotation.y
+	drop_parent.add_child(pickup)
+	pickup.set_item(item)
+
+
+## Called by a Pickup that bounced off a full bag.
+func notify_inventory_full() -> void:
+	_hud.show_notice(inventory_full_text, notice_time)
 
 
 func is_dead() -> bool:
@@ -153,13 +199,16 @@ func _lunge_step(delta: float) -> Vector3:
 ## Tracks what the interact ray points at and refreshes the HUD prompt only when it changes.
 ## No target while swinging, blocking or equipping, so you can't vacuum loot with block held.
 func _update_interact() -> void:
+	# A taken pickup frees itself; drop the stale reference.
+	if not is_instance_valid(_interact_target):
+		_interact_target = null
 	# Act on last frame's target first, so the refresh below already reflects the result.
 	if _intent.interact_pressed and _interact_target and _weapon_rig.can_interact():
 		_interact_target.call(&"interact", self)
 	var target: Node3D = null
 	if _weapon_rig.can_interact():
 		var hit: Node3D = _interact_ray.get_collider() as Node3D
-		if hit and hit.is_in_group(&"interactable"):
+		if hit and hit.is_in_group(&"interactable") and not hit.is_queued_for_deletion():
 			target = hit
 	var prompt: String = str(target.call(&"prompt_text")) if target else ""
 	if target != _interact_target or prompt != _interact_prompt:

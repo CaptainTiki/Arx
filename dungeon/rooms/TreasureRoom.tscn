@@ -12,6 +12,7 @@
 [ext_resource type="Resource" path="res://weapons/rusty_sword.tres" id="10_sword"]
 [ext_resource type="Resource" path="res://weapons/woodcutters_axe.tres" id="11_axe"]
 [ext_resource type="Resource" path="res://weapons/rusted_dagger.tres" id="12_dagger"]
+[ext_resource type="Resource" path="res://data/tables/treasure_loot.tres" id="15_treasure_loot"]
 
 [node name="TreasureRoom" type="Node3D"]
 script = ExtResource("1_room")
@@ -86,16 +87,18 @@ dir = 2
 
 [node name="Spawns" type="Node3D" parent="."]
 
-[node name="Dagger" type="Marker3D" parent="Spawns"]
+[node name="WeaponA" type="Marker3D" parent="Spawns"]
 position = Vector3(2.5, 0.5, 2.8)
 rotation = Vector3(0, 0, 0)
 script = ExtResource("3_spawn")
 kind = 1
+table = ExtResource("15_treasure_loot")
 fixed_item = ExtResource("12_dagger")
 
-[node name="Axe" type="Marker3D" parent="Spawns"]
+[node name="WeaponB" type="Marker3D" parent="Spawns"]
 position = Vector3(5.5, 0.5, 2.8)
 rotation = Vector3(0, 0, 0)
 script = ExtResource("3_spawn")
 kind = 1
+table = ExtResource("15_treasure_loot")
 fixed_item = ExtResource("11_axe")

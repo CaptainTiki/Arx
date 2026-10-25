@@ -1,0 +1,18 @@
+[gd_scene format=3]
+
+[node name="DragPreview" type="Control"]
+layout_mode = 3
+mouse_filter = 2
+
+[node name="Icon" type="TextureRect" parent="."]
+unique_name_in_owner = true
+modulate = Color(1, 1, 1, 0.85)
+texture_filter = 1
+layout_mode = 0
+offset_left = -24.0
+offset_top = -24.0
+offset_right = 24.0
+offset_bottom = 24.0
+mouse_filter = 2
+expand_mode = 1
+stretch_mode = 5

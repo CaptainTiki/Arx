@@ -2,13 +2,17 @@
 class_name SpawnPoint
 extends Marker3D
 ## Where something appears when the dungeon is built. The marker's transform becomes the spawn's.
+## Table first: if `table` is set it's rolled (a "nothing" row places nothing). Otherwise the fixed
+## fallback is used, exactly as in step 3.
 
 enum Kind { ENEMY, WEAPON, PLAYER }
 
 @export var kind: Kind
-## Step 3: exactly what gets placed (ENEMY). Step 4 swaps this for a table.
+## Rolled if set. ENEMY reads each row's `enemy`, WEAPON reads each row's `item`.
+@export var table: SpawnTable
+## Fallback when there's no table: the scene placed for ENEMY.
 @export var fixed_scene: PackedScene
-## WEAPON kind: the pickup is given this item.
+## Fallback when there's no table: the item a WEAPON pickup gets.
 @export var fixed_item: ItemData
 
 

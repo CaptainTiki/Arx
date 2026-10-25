@@ -12,6 +12,7 @@
 [ext_resource type="Resource" path="res://weapons/rusty_sword.tres" id="10_sword"]
 [ext_resource type="Resource" path="res://weapons/woodcutters_axe.tres" id="11_axe"]
 [ext_resource type="Resource" path="res://weapons/rusted_dagger.tres" id="12_dagger"]
+[ext_resource type="Resource" path="res://data/tables/combat_enemy.tres" id="13_combat_enemy"]
 
 [node name="CombatRoom_B" type="Node3D"]
 script = ExtResource("1_room")
@@ -94,16 +95,18 @@ dir = 2
 
 [node name="Spawns" type="Node3D" parent="."]
 
-[node name="GruntA" type="Marker3D" parent="Spawns"]
+[node name="EnemyA" type="Marker3D" parent="Spawns"]
 position = Vector3(4, 0, 7)
 rotation = Vector3(0, 0, 0)
 script = ExtResource("3_spawn")
 kind = 0
+table = ExtResource("13_combat_enemy")
 fixed_scene = ExtResource("9_enemy")
 
-[node name="GruntB" type="Marker3D" parent="Spawns"]
+[node name="EnemyB" type="Marker3D" parent="Spawns"]
 position = Vector3(12, 0, 5)
 rotation = Vector3(0, 0, 0)
 script = ExtResource("3_spawn")
 kind = 0
+table = ExtResource("13_combat_enemy")
 fixed_scene = ExtResource("9_enemy")

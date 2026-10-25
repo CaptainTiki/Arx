@@ -1,0 +1,11 @@
+[gd_resource type="StandardMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://art/palette/palette.png" id="1_palette"]
+
+[resource]
+resource_name = "hide_bruiser"
+roughness = 1.0
+albedo_texture = ExtResource("1_palette")
+uv1_scale = Vector3(0, 0, 0)
+uv1_offset = Vector3(0.3125, 0.6250, 0)
+texture_filter = 0

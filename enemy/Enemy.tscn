@@ -25,6 +25,7 @@ uv1_offset = Vector3(0.9375, 0.875, 0)
 texture_filter = 0
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
+resource_local_to_scene = true
 radius = 0.4
 height = 1.85
 
@@ -461,6 +462,7 @@ unique_name_in_owner = true
 script = ExtResource("2_health")
 
 [node name="Rig" type="Node3D" parent="."]
+unique_name_in_owner = true
 
 [node name="Legs" type="MeshInstance3D" parent="Rig"]
 position = Vector3(0, 0.43, 0)
@@ -473,6 +475,7 @@ material_overlay = SubResource("StandardMaterial3D_flash")
 mesh = SubResource("BoxMesh_pelvis")
 
 [node name="Torso" type="MeshInstance3D" parent="Rig/Body"]
+unique_name_in_owner = true
 position = Vector3(0, 0.36, 0)
 material_overlay = SubResource("StandardMaterial3D_flash")
 mesh = SubResource("BoxMesh_torso")
@@ -488,6 +491,7 @@ cast_shadow = 0
 mesh = SubResource("BoxMesh_eyes")
 
 [node name="ArmL" type="MeshInstance3D" parent="Rig/Body"]
+unique_name_in_owner = true
 position = Vector3(-0.34, 0.31, 0)
 rotation = Vector3(0.15, 0, -0.12)
 material_overlay = SubResource("StandardMaterial3D_flash")
@@ -498,6 +502,7 @@ position = Vector3(0.34, 0.58, 0)
 rotation = Vector3(0.6981, 0, 0)
 
 [node name="Arm" type="MeshInstance3D" parent="Rig/Body/ArmPivot"]
+unique_name_in_owner = true
 position = Vector3(0, -0.27, 0)
 material_overlay = SubResource("StandardMaterial3D_flash")
 mesh = SubResource("BoxMesh_arm")

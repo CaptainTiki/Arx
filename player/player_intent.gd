@@ -2,6 +2,8 @@ class_name PlayerIntent
 extends Node
 ## The only node that reads Input. Everything else reads these fields.
 ## Runs at process/physics priority -1 (set in Player.tscn) so it samples before Player.
+## Process mode is Always so Tab can close the inventory while the tree is paused; every other
+## input is ignored while paused.
 
 var move: Vector2 = Vector2.ZERO
 ## Mouse delta since last rendered frame, in pixels. Consumed by Player._process.
@@ -13,29 +15,56 @@ var sprint_held: bool = false
 ## E went down since the last physics frame.
 var interact_pressed: bool = false
 var restart_pressed: bool = false
-## Debug: F5 rebuilds the dungeon.
+## Debug: F5 rebuilds the dungeon with a new seed.
 var regenerate_pressed: bool = false
+## Debug: F6 rebuilds the dungeon with the same seed.
+var regenerate_same_pressed: bool = false
 
 var _look_accum: Vector2 = Vector2.ZERO
 var _regenerate_latched: bool = false
+var _regenerate_same_latched: bool = false
 var _attack_latched: bool = false
 var _interact_latched: bool = false
 var _restart_latched: bool = false
+var _inventory_latched: bool = false
 var _mouse_released: bool = false
 
 
 func _ready() -> void:
-	_capture_mouse()
+	capture_mouse()
+
+
+## True once per Tab press (paused or not). Polled by the InventoryScreen.
+func consume_inventory_toggle() -> bool:
+	var pressed: bool = _inventory_latched
+	_inventory_latched = false
+	return pressed
+
+
+func capture_mouse() -> void:
+	_mouse_released = false
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+
+func release_mouse() -> void:
+	_mouse_released = true
+	_look_accum = Vector2.ZERO
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"inventory"):
+		_inventory_latched = true
+		return
+	if get_tree().paused:
+		return
 	if event.is_action_pressed(&"ui_cancel"):
-		_release_mouse()
+		release_mouse()
 		return
 	if _mouse_released:
 		# The click that recaptures the mouse shouldn't also swing.
 		if event is InputEventMouseButton and event.is_pressed():
-			_capture_mouse()
+			capture_mouse()
 			get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseMotion:
@@ -48,15 +77,17 @@ func _unhandled_input(event: InputEvent) -> void:
 		_restart_latched = true
 	elif event.is_action_pressed(&"regenerate"):
 		_regenerate_latched = true
+	elif event.is_action_pressed(&"regenerate_same"):
+		_regenerate_same_latched = true
 
 
 func _process(_delta: float) -> void:
-	look = _look_accum
+	look = Vector2.ZERO if get_tree().paused else _look_accum
 	_look_accum = Vector2.ZERO
 
 
 func _physics_process(_delta: float) -> void:
-	var active: bool = not _mouse_released
+	var active: bool = not _mouse_released and not get_tree().paused
 	move = Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back") if active else Vector2.ZERO
 	block_held = active and Input.is_action_pressed(&"block")
 	sprint_held = active and Input.is_action_pressed(&"sprint")
@@ -68,14 +99,5 @@ func _physics_process(_delta: float) -> void:
 	_restart_latched = false
 	regenerate_pressed = _regenerate_latched
 	_regenerate_latched = false
-
-
-func _capture_mouse() -> void:
-	_mouse_released = false
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-
-
-func _release_mouse() -> void:
-	_mouse_released = true
-	_look_accum = Vector2.ZERO
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	regenerate_same_pressed = _regenerate_same_latched
+	_regenerate_same_latched = false

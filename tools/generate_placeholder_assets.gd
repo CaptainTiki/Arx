@@ -7,6 +7,8 @@ extends SceneTree
 const SAMPLE_RATE: int = 44100
 const SWATCH_SIZE: int = 8
 const PALETTE_COLUMNS: int = 8
+## IconStroke swatch value that clears pixels instead of painting.
+const ERASE: int = -1
 
 ## Row-major, 8 columns x 4 rows; index = row * 8 + column. The swatch map in NOTES.md mirrors this.
 var _palette: Array[Color] = [
@@ -35,7 +37,9 @@ func _initialize() -> void:
 	_write_wav("res://audio/sfx/block_clang.wav", _clang())
 	_write_wav("res://audio/sfx/enemy_grunt.wav", _voice(0.42, 90.0, 125.0, 70.0, 650.0, 1100.0, 0.15))
 	_write_wav("res://audio/sfx/player_hurt.wav", _voice(0.24, 160.0, 210.0, 120.0, 750.0, 1250.0, 0.25))
+	_write_wav("res://audio/sfx/nope.wav", _nope())
 	_write_weapons()
+	_write_armor()
 	print("Placeholder assets written.")
 	quit()
 
@@ -94,6 +98,102 @@ func _write_weapons() -> void:
 	])
 
 
+## Armor world meshes and icons. Built in pickup space: +Z is up once Pickup lays the mesh down
+## (its Mesh node turns mesh +Y to horizontal and mesh +Z to up). Swatches: 9–12 leather, 26–28 iron.
+func _write_armor() -> void:
+	var cap: Array[MeshPart] = [
+		MeshPart.new(Vector3(0.2, 0.2, 0.11), Vector3(0.0, 0.0, 0.075), 12),
+		MeshPart.new(Vector3(0.14, 0.14, 0.03), Vector3(0.0, 0.0, 0.145), 12),
+		MeshPart.new(Vector3(0.23, 0.23, 0.03), Vector3(0.0, 0.0, 0.015), 10),
+	]
+	var vest: Array[MeshPart] = [
+		MeshPart.new(Vector3(0.42, 0.5, 0.06), Vector3(0.0, 0.0, 0.03), 12),
+		MeshPart.new(Vector3(0.1, 0.08, 0.07), Vector3(0.13, 0.26, 0.035), 10),
+		MeshPart.new(Vector3(0.1, 0.08, 0.07), Vector3(-0.13, 0.26, 0.035), 10),
+		MeshPart.new(Vector3(0.03, 0.4, 0.065), Vector3(0.0, 0.0, 0.033), 9),
+		MeshPart.new(Vector3(0.43, 0.04, 0.065), Vector3(0.0, -0.24, 0.033), 10),
+	]
+	var gloves: Array[MeshPart] = []
+	var boots: Array[MeshPart] = []
+	for side: float in [-1.0, 1.0]:
+		var x: float = 0.07 * side
+		gloves.append(MeshPart.new(Vector3(0.09, 0.14, 0.04), Vector3(x, 0.02, 0.02), 11))
+		gloves.append(MeshPart.new(Vector3(0.08, 0.07, 0.03), Vector3(x, 0.12, 0.015), 11))
+		gloves.append(MeshPart.new(Vector3(0.1, 0.05, 0.05), Vector3(x, -0.07, 0.025), 10))
+		gloves.append(MeshPart.new(Vector3(0.03, 0.05, 0.03), Vector3(x + 0.055 * side, 0.03, 0.015), 11))
+		boots.append(MeshPart.new(Vector3(0.09, 0.1, 0.2), Vector3(x, 0.0, 0.12), 11))
+		boots.append(MeshPart.new(Vector3(0.09, 0.2, 0.07), Vector3(x, 0.07, 0.045), 11))
+		boots.append(MeshPart.new(Vector3(0.095, 0.21, 0.02), Vector3(x, 0.07, 0.01), 9))
+	var iron_cap: Array[MeshPart] = [
+		MeshPart.new(Vector3(0.22, 0.22, 0.12), Vector3(0.0, 0.0, 0.08), 27, true),
+		MeshPart.new(Vector3(0.16, 0.16, 0.03), Vector3(0.0, 0.0, 0.155), 27, true),
+		MeshPart.new(Vector3(0.245, 0.245, 0.035), Vector3(0.0, 0.0, 0.0175), 28, true),
+		MeshPart.new(Vector3(0.03, 0.02, 0.07), Vector3(0.0, 0.123, 0.02), 26, true),
+	]
+	_write_item_mesh("res://items/armor/meshes/rawhide_cap.res", cap)
+	_write_item_mesh("res://items/armor/meshes/rawhide_vest.res", vest)
+	_write_item_mesh("res://items/armor/meshes/rawhide_gloves.res", gloves)
+	_write_item_mesh("res://items/armor/meshes/rawhide_boots.res", boots)
+	_write_item_mesh("res://items/armor/meshes/iron_cap.res", iron_cap)
+
+	# Caps: a round crown with everything below the brim erased, so it reads as a dome, not a loaf.
+	_write_icon("res://items/armor/icons/rawhide_cap.png", [
+		IconStroke.new(Vector2(12, 21), Vector2(20, 21), 9.0, 12),
+		IconStroke.new(Vector2(0, 29), Vector2(32, 29), 6.0, ERASE),
+		IconStroke.new(Vector2(5, 23), Vector2(27, 23), 1.6, 10),
+		IconStroke.new(Vector2(13, 15), Vector2(19, 15), 0.8, 13),
+	])
+	_write_icon("res://items/armor/icons/rawhide_vest.png", [
+		IconStroke.new(Vector2(16, 10), Vector2(16, 24), 7.5, 12),
+		IconStroke.new(Vector2(9, 7), Vector2(9, 10), 2.0, 10),
+		IconStroke.new(Vector2(23, 7), Vector2(23, 10), 2.0, 10),
+		IconStroke.new(Vector2(16, 10), Vector2(16, 26), 0.8, 9),
+		IconStroke.new(Vector2(10, 27), Vector2(22, 27), 1.2, 10),
+	])
+	_write_icon("res://items/armor/icons/rawhide_gloves.png", [
+		IconStroke.new(Vector2(10, 11), Vector2(10, 22), 3.5, 11),
+		IconStroke.new(Vector2(22, 11), Vector2(22, 22), 3.5, 11),
+		IconStroke.new(Vector2(5, 16), Vector2(6, 19), 1.6, 11),
+		IconStroke.new(Vector2(27, 16), Vector2(26, 19), 1.6, 11),
+		IconStroke.new(Vector2(8, 26), Vector2(12, 26), 1.6, 10),
+		IconStroke.new(Vector2(20, 26), Vector2(24, 26), 1.6, 10),
+	])
+	_write_icon("res://items/armor/icons/rawhide_boots.png", [
+		IconStroke.new(Vector2(9, 7), Vector2(9, 22), 3.0, 11),
+		IconStroke.new(Vector2(9, 24), Vector2(14, 24), 3.0, 11),
+		IconStroke.new(Vector2(21, 7), Vector2(21, 22), 3.0, 11),
+		IconStroke.new(Vector2(21, 24), Vector2(26, 24), 3.0, 11),
+		IconStroke.new(Vector2(6, 28), Vector2(16, 28), 0.8, 9),
+		IconStroke.new(Vector2(18, 28), Vector2(28, 28), 0.8, 9),
+	])
+	_write_icon("res://items/armor/icons/iron_cap.png", [
+		IconStroke.new(Vector2(13, 20), Vector2(19, 20), 10.0, 27),
+		IconStroke.new(Vector2(0, 28), Vector2(32, 28), 6.0, ERASE),
+		IconStroke.new(Vector2(5, 22), Vector2(27, 22), 1.5, 26),
+		IconStroke.new(Vector2(16, 22), Vector2(16, 29), 1.3, 28),
+		IconStroke.new(Vector2(12, 13), Vector2(18, 11), 0.8, 29),
+	])
+
+
+## Two descending, low, slightly square blips: a dull "nope".
+func _nope() -> PackedFloat32Array:
+	var count: int = int(0.26 * SAMPLE_RATE)
+	var out: PackedFloat32Array = PackedFloat32Array()
+	out.resize(count)
+	var phase: float = 0.0
+	var low: float = 0.0
+	for i: int in count:
+		var t: float = float(i) / SAMPLE_RATE
+		var freq: float = 196.0 if t < 0.11 else 147.0
+		var local_t: float = t if t < 0.11 else t - 0.12
+		var on: bool = t < 0.09 or (t >= 0.12 and t < 0.24)
+		phase += TAU * freq / SAMPLE_RATE
+		var env: float = (smoothstep(0.0, 0.006, local_t) * exp(-local_t * 18.0)) if on else 0.0
+		low += (tanh(sin(phase) * 3.0) * env - low) * 0.18
+		out[i] = low
+	return _normalized(out, 0.6)
+
+
 ## Merges boxes into one mesh: a matte surface and a metal surface, both on the shared palette texture.
 ## Every vertex of a box gets the UV of its swatch's center, so the whole box reads as that one color.
 func _write_item_mesh(path: String, parts: Array[MeshPart]) -> void:
@@ -135,14 +235,18 @@ func _write_item_mesh(path: String, parts: Array[MeshPart]) -> void:
 
 
 ## 32×32 icon: each stroke is a thick line segment in one swatch, with a 1 px dark outline under everything.
+## A stroke with swatch ERASE clears pixels instead (no outline), for flat cuts like a cap's rim.
 func _write_icon(path: String, strokes: Array[IconStroke]) -> void:
 	var size: int = 32
 	var image: Image = Image.create_empty(size, size, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
 	for outline: bool in [true, false]:
 		for stroke: IconStroke in strokes:
+			var erase: bool = stroke.swatch == ERASE
+			if outline and erase:
+				continue
 			var radius: float = stroke.radius + (1.0 if outline else 0.0)
-			var color: Color = _palette[0] if outline else _palette[stroke.swatch]
+			var color: Color = Color(0, 0, 0, 0) if erase else (_palette[0] if outline else _palette[stroke.swatch])
 			for y: int in size:
 				for x: int in size:
 					var p: Vector2 = Vector2(x + 0.5, y + 0.5)

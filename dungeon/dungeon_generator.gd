@@ -35,21 +35,30 @@ extends Node
 @export var player: Player
 ## Instantiated for WEAPON spawn points.
 @export var pickup_scene: PackedScene
+## Instantiated for ENEMY rows rolled from a table; the row's EnemyData is set on it.
+@export var enemy_scene: PackedScene
+## Print every spawn decision after the seed line, e.g. "room 4 (CombatRoom_B) spawn 1 → skitterer".
+@export var print_spawn_log: bool = true
 
-## Seed of the layout currently built. Put it in seed_value to rebuild exactly this floor.
+## Seed of the layout currently built. Put it in seed_value (or press F6) to rebuild exactly this floor.
 var last_seed: int = 0
+## One line per spawn point of the current floor, in build order. Same seed = same lines.
+var last_spawn_log: PackedStringArray = []
 
 ## Room.Type -> Array of RoomTemplate.
 var _templates: Dictionary[int, Array] = {}
 
 
-## Throws away the current floor and builds a new one.
-func generate() -> void:
-	var base_seed: int = seed_value if seed_value != 0 else randi()
+## Throws away the current floor and builds a new one. `forced_seed` (nonzero) overrides seed_value,
+## e.g. last_seed to rebuild the same floor.
+func generate(forced_seed: int = 0) -> void:
+	var base_seed: int = forced_seed if forced_seed != 0 else (seed_value if seed_value != 0 else randi())
 	var plan: Array[Placement] = []
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	for restart: int in max_restarts + 1:
 		var run_seed: int = base_seed + restart * 7919
-		plan = plan_layout(run_seed)
+		rng.seed = run_seed
+		plan = _plan(rng)
 		if not plan.is_empty():
 			last_seed = run_seed
 			print("Dungeon seed %d: %d rooms%s" % [run_seed, plan.size(), " (after %d restart(s))" % restart if restart > 0 else ""])
@@ -59,14 +68,19 @@ func generate() -> void:
 		push_error("DungeonGenerator: no layout reached an exit after %d restarts from seed %d. The catalog needs more multi-door rooms, or raise max_attempts." % [max_restarts, base_seed])
 		return
 	_clear()
-	_build(plan)
+	# The same RNG carries on from planning into the spawn rolls, so the seed fixes both.
+	_build(plan, rng)
 
 
 ## Pure layout for one seed: no nodes are placed. Empty if no exit could be placed.
 func plan_layout(run_seed: int) -> Array[Placement]:
-	_load_templates()
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = run_seed
+	return _plan(rng)
+
+
+func _plan(rng: RandomNumberGenerator) -> Array[Placement]:
+	_load_templates()
 	var placements: Array[Placement] = []
 	var occupied: Dictionary[Vector2i, Placement] = {}
 	var open_doors: Array[OpenDoor] = []
@@ -245,7 +259,7 @@ func _clear() -> void:
 		child.queue_free()
 
 
-func _build(plan: Array[Placement]) -> void:
+func _build(plan: Array[Placement], rng: RandomNumberGenerator) -> void:
 	var rooms: Array[Room] = []
 	for i: int in plan.size():
 		var placement: Placement = plan[i]
@@ -264,25 +278,51 @@ func _build(plan: Array[Placement]) -> void:
 			if not door.used and door.plug_scene:
 				# Child of the marker = exactly at the marker's transform, and freed with the room.
 				door.add_child(door.plug_scene.instantiate())
-	for room: Room in rooms:
-		for spawn: SpawnPoint in room.get_spawn_points():
-			_spawn(spawn)
+	last_spawn_log.clear()
+	for room_index: int in rooms.size():
+		var room: Room = rooms[room_index]
+		var spawns: Array[SpawnPoint] = room.get_spawn_points()
+		for spawn_index: int in spawns.size():
+			var outcome: String = _spawn(spawns[spawn_index], rng)
+			last_spawn_log.append("room %d (%s) spawn %d → %s" % [room_index, plan[room_index].template.name, spawn_index, outcome])
+	if print_spawn_log:
+		for line: String in last_spawn_log:
+			print("  " + line)
 
 
-func _spawn(spawn: SpawnPoint) -> void:
+## Places what one spawn point produces and returns a short description for the log.
+## Table first (a "nothing" row places nothing); no table = step-3 fixed fallback.
+func _spawn(spawn: SpawnPoint, rng: RandomNumberGenerator) -> String:
 	var local: Transform3D = spawned.global_transform.affine_inverse() * spawn.global_transform
-	match spawn.kind:
-		SpawnPoint.Kind.PLAYER:
-			player.place_at(spawn.global_transform)
-		SpawnPoint.Kind.ENEMY:
-			var enemy: Node3D = spawn.fixed_scene.instantiate() as Node3D
-			enemy.transform = local
-			spawned.add_child(enemy)
-		SpawnPoint.Kind.WEAPON:
-			var pickup: Pickup = pickup_scene.instantiate() as Pickup
-			pickup.transform = local
-			spawned.add_child(pickup)
-			pickup.set_item(spawn.fixed_item)
+	if spawn.kind == SpawnPoint.Kind.PLAYER:
+		player.place_at(spawn.global_transform)
+		return "player"
+	if spawn.table:
+		var entry: SpawnEntry = spawn.table.roll(rng)
+		if entry == null or entry.payload_for(spawn.kind) == null:
+			return "nothing"
+		if spawn.kind == SpawnPoint.Kind.ENEMY:
+			var rolled: Enemy = enemy_scene.instantiate() as Enemy
+			rolled.data = entry.enemy
+			rolled.transform = local
+			spawned.add_child(rolled)
+		else:
+			_place_pickup(local, entry.item)
+		return entry.describe(spawn.kind)
+	if spawn.kind == SpawnPoint.Kind.ENEMY:
+		var enemy: Node3D = spawn.fixed_scene.instantiate() as Node3D
+		enemy.transform = local
+		spawned.add_child(enemy)
+		return "fixed %s" % spawn.fixed_scene.resource_path.get_file().get_basename()
+	_place_pickup(local, spawn.fixed_item)
+	return "fixed %s" % spawn.fixed_item.display_name.to_lower()
+
+
+func _place_pickup(local: Transform3D, item: ItemData) -> void:
+	var pickup: Pickup = pickup_scene.instantiate() as Pickup
+	pickup.transform = local
+	spawned.add_child(pickup)
+	pickup.set_item(item)
 
 
 ## One catalog room's metadata, read once from an off-tree instance.
