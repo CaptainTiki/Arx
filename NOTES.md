@@ -1,12 +1,209 @@
-# Steps 1–7.1 — Swing & Block, Pickups, Generated Dungeon, Spawn Tables, Inventory, Enemy Perception, Generator v2 & Minimap, Connectors
+# Steps 1–9 — Swing & Block, Pickups, Generated Dungeon, Spawn Tables, Inventory, Enemy Perception, Generator v2 & Minimap, Connectors, Aimed Branches, Hub Rooms & Halls
 
 Open in Godot 4.7, press F5. Main scene: `res://main/Main.tscn`. The step-1 room lives on as `res://tests/CombatArena.tscn`, the fixture for the combat smoke test; you can also open it and F6 it to fight one grunt in a known room.
 
 **Controls:** WASD move · Shift sprint · LMB swing · RMB block (hold) · E take · Tab inventory · M full map · R restart · F5 new dungeon · F6 same dungeon again · Esc frees the mouse (click to recapture).
 
-Every Play builds a different floor: a main path of 6 rooms from a start room to a glowing exit pad, with side branches off it, 12 rooms in all. Rooms never open straight into rooms; a corridor always sits between them (about 11 per floor). You start holding the Rusty Sword with an empty bag. Combat and treasure rooms roll what's in them from spawn tables. The output log prints the floor's shape (`Dungeon seed N: main 6, branches 3 (max depth 2), treasure at depths [2, 5], loops 0`), then one line per spawn point (`room 4 (CombatRoom_B) spawn 1 → skitterer`). Put N in `DungeonGenerator.seed_value`, or press F6, to get that exact floor and those exact spawns again. F5 builds a new one. Look at an item within 2.5 m and press E to put it in your bag; Tab opens the inventory to wear it. The corner map fills in each room as you walk into it; M swaps it for a full-screen map.
+Every Play builds a different floor: a main path of 12 rooms from a start room to a glowing exit pad, with 4–6 side branches off it, about 36 rooms in all. Rooms never open straight into rooms; a hall of 1–4 corridor pieces always sits between them, and every floor loops back on itself several times. (Step 9 doubled everything on purpose, to tune down from; see Step 9.) You start holding the Rusty Sword with an empty bag. Combat and treasure rooms roll what's in them from spawn tables. The output log prints the floor's shape (`Dungeon seed N: main 12, branches 5/5 (depths 3,6,6,5,6), aimed 5 (closed 1), halls 41 (mean 1.6, 2 extended, 10 capped), loops 8 (len 6, 4, 6, 7, 8, 8, 9, 10), treasure at depths [2, 10], candidates 12`), then one line per spawn point (`room 4 (CombatRoom_B) spawn 1 → skitterer`). Put N in `DungeonGenerator.seed_value`, or press F6, to get that exact floor and those exact spawns again. F5 builds a new one. Look at an item within 2.5 m and press E to put it in your bag; Tab opens the inventory to wear it. The corner map fills in each room as you walk into it; M swaps it for a full-screen map.
 
 Enemies stand watch, sweeping their gaze, until they **see** you (12 m, a 110° cone, a clear line to your head) or **hear** you (a fight, a block, a sprint, a dropped item). Then they bark, turn, and come for you, or go and look if they only heard something. Lose them for 3 s and they search where they last saw you, then walk home. Grunts walk in, rear back with a red flash (the windup, turning at most their turn rate to follow you) and lunge into the strike. Skitterers crouch and leap at you from mid-range. Bruisers roar and charge from afar; sidestep one into a wall and it stands there dazed. After any attack the enemy stands still, without turning, through recovery and cooldown. See Steps 4 and 6.
+
+---
+
+## Step 9: hub rooms, adaptive halls, doubled floors
+
+Rooms are now hubs with doors on several sides, the halls between them are chains of 1–4 connector pieces that bend round whatever is in the way, and every shape knob is doubled ("deliberately too big; we tune down from the maps"). Vocabulary: a **room** is content, a **hall** is the chain of connector pieces between two rooms, and a **corridor** is one piece.
+
+**The maps:** `docs/plans_step9.png`, seeds 1–12 at the defaults, from `tools/plan_map.gd`. `docs/plans_step8.png` is the same seeds on the step-8.1 generator, for comparison. Light grey is the main path, dark grey branches, darker strips halls, yellow loop bridges, green START, orange EXIT, tan treasure. White notches are used doors and red ones plugged.
+
+### Hub rooms — `res://dungeon/rooms/` (greybox CSG, all COMBAT)
+
+| Scene | Footprint | Doors | Spawns | Weight | What's in it |
+|---|---|---|---|---|---|
+| `Hall_4x8` | 4×8 | W and E, each at z = 1 and z = 6 | ENEMY ×3, WEAPON ×1 | 1 | Five pillars down the middle, 4 torches |
+| `Crossroads_3x3` | 3×3 | N, E, S, W, centred | ENEMY ×1 | 2 | One central pillar, 2 torches |
+| `Hub_5x5` | 5×5 | N, E, S, W centred, plus a second S at x = 0 | ENEMY ×3 (one on the platform), WEAPON ×1 (on the platform) | 1 | An 8×8 m platform 0.5 m up, with a 2 m ramp on each side facing the centred doors. The ring round it, where the doors are, stays at floor level. 4 torches |
+| `Gallery_2x6` | 2×6 | N at x = 0, S at x = 1, W and E at z = 2 | ENEMY ×2 | 2 | Plain and narrow, 2 torches |
+| `Barracks_4x4` | 4×4 | N (x = 1), E (z = 2), S (x = 2) | ENEMY ×2, WEAPON ×1 | 2 | Four wooden bunks along the blank west wall and two 1.2 m stone low walls as cover, 3 torches |
+
+Every ENEMY point is on `combat_enemy.tres` and every WEAPON point on `combat_weapon.tres`, and the room warnings are clean on all five. The existing combat rooms keep their weight of 1. A room 2 or 4 cells wide has no centred cell, so the Gallery's end doors are offset diagonally (its long run jogs), and the Barracks' N and S sit one cell either side of the middle.
+
+### Halls — `DungeonGenerator._grow_link()`
+
+```
+grow_link(door, type): lay 1 or 2 connectors (by weight; every template and entry door tried until one fits with a way on)
+  loop: try every allowed room of `type` (weighted order) at every entry door on the hall's end; one fits? done
+        the hall is max_hall_pieces long? give up
+        else extend by one piece in hall_extend_order (L, Straight, T, Corridor_4, Corridor_2): the first that fits
+  give up: _unplace() every piece, newest first, and cap the door (never grown from again; plugged unless a bridge ends there)
+main path: the current room tries its free doors until a link takes; none take = restart. A branch does the same; none = it ends.
+```
+
+- **`_unplace()`** is the exact reverse of `_place()`: cells freed, the parent's door free again, the piece dropped from the plan, the room and template counts undone. The test turns on `verify_unplace`, which copies the layout before every link and compares it after every failed one. Over 1000 seeds, restarts' tries included, that's 6,028 failed links and none changed anything.
+- A T in a hall carries on through one of its two exits (picked at random, or toward an aimed branch's target), and the other stays free. Main-path T's are branch starts like the main-path rooms, and any T exit can end a loop bridge.
+- **Capped doors still take loop bridges.** A capped door had no room for a hall plus a room, but a 1-cell-wide bridge may fit. Branch starts and links skip them.
+- Every link is room → hall → room, and the connector rule is gone. `_next_type`, `_grow_one` and `door_retry_limit` went with it. Loop bridges are untouched. Separation still counts rooms only, so a whole hall is free.
+- On the map, a hall's pieces join into one corridor with no seams, like a bridge's (`MapModel` groups them).
+
+### Knobs — doubled
+
+| Knob | Was | Now | Notes |
+|---|---|---|---|
+| `main_path_length` | 6 | **12** | |
+| `branch_count_min` / `max` | 2 / 3 | **4 / 6** | |
+| `max_branch_depth` | 3 | **6** | |
+| `max_loop_length` (the handoff's `bridge_max_len`) | 5 | **10** | Kept its name |
+| `max_rooms` | 24 | **64** | Never binds (0 of 1000 floors). A floor can't pass 52 rooms: 14 on the spine, 6 branches of 6, 2 treasure rooms off the main path. |
+| `max_hall_pieces` | (new) | **4** | |
+| `hall_extend_order` | (new) | L, Straight, T, Corridor_4, Corridor_2 | Connectors not listed come after, in catalog order |
+| `loop_min_separation` | 3 | 3 | |
+| `max_attempts` | 200 | **2500** | Every template and entry door a hall or room tries counts now. A floor spends 425 on average and 1,240 at worst, so 200 cut almost every floor short (silently: the branch pass just stops). 2500 is twice the worst. |
+| `max_restarts` | 5 | **10** | 78.8% of seeds plan first time; the worst of 1000 needed 5 restarts |
+| `door_retry_limit` | 4 | (gone) | Halls and rooms try every template and entry door instead of 4 random ones |
+
+Step 8's knob table below is kept as history; its defaults are the old ones.
+
+### What 1000 seeds look like (defaults)
+
+| | Step 8.1 | Step 9 |
+|---|---|---|
+| Rooms per floor | 13.7 | **36.0** |
+| Floor footprint | 192 cells | **696 cells** (bounding box 54 × 54 cells, 214 × 216 m) |
+| Main path, START to EXIT | 108 cells | **256 cells** (1,022 m of floor to walk through; the exit is 144 m from START as the crow flies) |
+| Doors per room | 2.62 | **3.40** |
+| Share of room doors used | 74% | **64%** |
+| Share of all doors used (connectors included) | 84% | 84% |
+| Floors with a loop (separation 3) | 32% | **100%** (5.05 per floor, mean 6.2 cells) |
+| Treasure per floor / floors with none | 0.49 / 59% | **1.70 / 6%** |
+| Floors short of their rolled branch count | 6% | 1.9% |
+
+- **Halls:** 35.0 per floor, 1.56 pieces each. By pieces: 1: 48.1%, 2: 48.5%, 3: 2.7%, 4: 0.7%. 54.6 connector pieces per floor.
+- **Extends:** 5.8% of halls needed one past their first 1–2 pieces. Of the links that extended, 53% then found a room.
+- **Caps:** links are tried 40.6 times per floor and 13.8% cap their door. A third of those had extended first.
+- **The share of room doors used went down, not up.** The hubs carry 4–5 doors and use 2–3 of them. Used doors per room did rise (1.94 → 2.18), and 49 doors per floor are plugged.
+- **Aimed branches:** 5.17 per floor, always with a target. Of 5,169:
+  - 32% closed a loop (was 11%);
+  - 22% reached `max_branch_depth`;
+  - 46% found nothing that fit;
+  - none ran into `max_rooms` or a one-door room.
+- **Leftover loop pass:** 9.7 candidates per floor, none within 10 cells on 2% of floors.
+- **Bridge lengths:** 22% are 9–10 cells. These are hallways, not shortcuts.
+
+### Loop table at the defaults — share of floors with a loop (loops per floor, mean bridge cells), 300 seeds per cell
+
+| separation ≥ | cap 5 | cap 10 |
+|---|---|---|
+| 1 | 99% (4.86, 3.6) | 100% (10.68, 6.2) |
+| 2 | 98% (3.57, 3.6) | 100% (6.65, 6.1) |
+| **3** | 93% (2.69, 3.6) | **100% (4.90, 6.2)** |
+
+At step 9's size, loops no longer need the long cap: cap 5 still loops 93% of floors, with bridges half as long.
+
+### Main path length — one-off sweep, 300 seeds each, everything else at the defaults
+
+| `main_path_length` | First try | Main path | Exit from START | Floor | Rooms | Loops |
+|---|---|---|---|---|---|---|
+| 8 | 89% | 178 cells (710 m) | 113 m | 583 cells | 30.4 | 4.27 |
+| 10 | 86% | 217 cells (866 m) | 126 m | 649 cells | 33.8 | 4.47 |
+| **12** | 81% | 255 cells (1,022 m) | 140 m | 693 cells | 35.8 | 4.90 |
+
+Shortening the main path shortens the walk but hardly the floor: the 4–6 branches of up to 6 rooms are most of it.
+
+### Reading the maps (the handoff's three questions)
+
+1. **A place or a line?** The middle of most floors is a web now: hubs with 3–5 doors, short halls, rooms on several sides of each other (seeds 1, 3, 8, 9). But the main path still often runs out as a line at one end. Seed 7's last six rooms to the exit are a straight row, and seed 6 has a long tail too. Branches bunch where the main path left space.
+2. **Do branches meet the spine?** Yes. Every floor has loops, and a third of aimed branches close. The bridges that do it are long, though: at cap 10 they read as extra corridors snaking between clusters.
+3. **12 main rooms: a floor or a marathon?** A marathon: 1 km of rooms and halls between START and EXIT. 8 would be 710 m, and the table above has what each length costs.
+
+---
+
+## Step 8 (with 8.1): aimed branches and branch knobs
+
+### Floor shape — `Main.tscn → DungeonGenerator`, Shape group
+
+| Knob | Default | Meaning |
+|---|---|---|
+| `main_path_length` | 6 | Rooms (not connectors) between START and EXIT. The spine is always this + 2 rooms. |
+| `branch_count_min` / `branch_count_max` | 2 / 3 | Each floor rolls how many branches it wants, between these two, from the plan's RNG. Branches keep starting off the main path's spare doors until that many have each placed at least one room. A branch that places nothing (no fit, or it closed a loop straight from its start door) doesn't count, and the next spare door gets a turn. |
+| `max_branch_depth` | 3 | Rooms (not connectors) per branch, at most |
+| `max_rooms` | 24 | Hard ceiling on rooms, START and EXIT included: a safety stop for bigger presets. At 2–3 branches a floor tops out at 8 + 3×3 = 17 plus any side treasure rooms, so it never binds (the test checks it). At 4–6 it can bind (1% of floors). |
+| `aimed_branch_chance` | 0.6 | Share of branches that aim for a loop (below) |
+| `aim_strength` | 1.0 | How hard an aimed branch steers (0 = it picks a target but doesn't steer) |
+| `loop_min_separation` | 3 | Fewest rooms between a bridge's two ends; also the aimed branch's target filter |
+| `max_loop_length` | 5 | Longest bridge in cells, the aimed branch's closing bridge included |
+
+`target_rooms` is gone (8.1). It was a single room budget shared by every branch, and it starved them (below).
+
+### Aimed branches — `DungeonGenerator._plan_branches()`
+
+Each branch that starts from a main-path door is **aimed** with probability `aimed_branch_chance`:
+
+1. **Target** (`_pick_target`): of every free door on a room (not a connector) at least `loop_min_separation` rooms from the branch's start room, along the layout as it stands, take the one nearest the start door. Distance is Manhattan, between the cells outside the two doors, and the target's outside cell must be empty so a bridge can end there. Ties go to placement order, then door order. With no such door, the branch grows normally.
+2. **Steer:** each growth step weights frontier doors and entry doors by `dot(door_out_dir, (target_cell - door_cell).normalized())`, at `1 + aim_strength × score`, clamped to at least 0.1. This is the curl code, generalized to steer toward any point (`_grow_one`'s `bias` and `toward`).
+3. **No dead ends (8.1):** an aimed branch never picks a one-door room. Its templates need at least 2 doors, and a TREASURE roll becomes COMBAT, because a treasure room would end the branch on the spot. Normal branches still get treasure rooms.
+4. **Close** (`_close_aimed`): before the first piece, and after every piece, each of the branch's free doors is tried against the target, the start door included until something attaches to it. Any door whose routed bridge fits in `max_loop_length` cells, between rooms still at least `loop_min_separation` apart, qualifies, and the shortest is laid with the normal bridge pieces. The branch ends there.
+5. **Give up quietly:** a branch that reaches `max_branch_depth` or can't fit anything is just a normal branch. Nothing is undone.
+
+Aimed branches use `_grow_one`, so the connector rule and the placement rules apply. Normal branches are unchanged, and the leftover loop pass still runs last. At chance 0 there's no roll at all.
+
+### Final numbers (defaults, 1000 seeds)
+
+- **Loops on 32% of floors** (0.38 per floor) at separation 3, cap 5. Confirmed at 31.8% on a separate 1000-seed run, so the 30% bar is cleared, but narrowly. Bridges average 3.8 cells.
+- **Shape:** 13.7 rooms and 13.4 connectors per floor, 192 cells (107 × 115 m), 2.42 branches of 2.49 rolled, the deepest 2.8 rooms deep. The main path is 108 cells long.
+- **Door supply:** 6% of floors got fewer branches than they rolled, because the main path's spare doors ran out. At 3–5 that's 29% and at 4–6, 48%; that's the number that says the room set needs more doors.
+- **Aimed branches:** 1.64 per floor (plus 239 rolls in all with no far door to aim at). Of 1,643:
+  - 186 (11%) closed a loop;
+  - 719 (44%) reached `max_branch_depth` first;
+  - 738 (45%) found nothing that fit;
+  - none ran into `max_rooms` or ended in a one-door room.
+
+  They place 3.9 pieces before ending.
+- **Treasure fell to 0.49 per floor, and 59% of floors have none.** Fewer branch rooms means fewer treasure rolls, and aimed branches can't roll treasure at all. That's step 9's to fix.
+
+### Branch-count table — separation 3, cap 5, 300 seeds each
+
+| branches | loops | cells | rooms | branches placed | short of roll | `max_rooms` hit |
+|---|---|---|---|---|---|---|
+| **2–3 (default)** | **32% (0.36)** | 193 | 13.6 | 2.39 | 5% | 0% |
+| 3–5 | 45% (0.58) | 229 | 16.0 | 3.46 | 29% | 0% |
+| 4–6 | 48% (0.66) | 246 | 17.1 | 3.98 | 48% | 1% |
+
+**Decision (the handoff's rule, adapted to min/max pairs):** the smallest pair with separation-3 loops on 30%+ of floors is 2–3. 3–5 buys 13 more points of loops for 19% more floor, and 4–6 adds little over 3–5 because the door supply runs out. That's the content limit showing.
+
+### Loop table at the defaults — share of floors with a loop (loops per floor), 300 seeds per cell
+
+| separation ≥ | cap 4 | cap 5 | cap 6 |
+|---|---|---|---|
+| 1 | 48% (0.61) | 61% (0.83) | 74% (1.13) |
+| 2 | 35% (0.41) | 44% (0.53) | 49% (0.61) |
+| **3** | 25% (0.27) | **32% (0.36)** | 38% (0.43) |
+
+### Before 8.1 (step 8 alone, with `target_rooms` 12)
+
+Aimed branches on their own took separation 3, cap 5 from 13% to 19% at chance 0.6, and 22% at chance 1.0. Adding `max_branch_depth` 4 didn't help (18%). Of 1,331 aimed branches:
+- 6% closed;
+- 32% ran out of the shared `target_rooms` budget;
+- 14% dead-ended in a treasure room;
+- 29% found nothing that fit;
+- 19% reached their depth.
+
+Those two starvation causes, the shared budget and the treasure dead ends, are what 8.1 removed.
+
+### Why loops were hard (read before trying curl again)
+
+The generator grows a tree outward from START, so rooms that end up near each other in space are almost always near each other in the layout. A loop between them is a pointless circle, which the separation rule rightly refuses. Every passive lever has been tried and measured:
+- **Straight one-cell bridges:** 1% of floors.
+- **Routed bridges up to 5 cells:** 10%.
+- **Longer caps:** they help little, because separation binds, not length.
+- **Main-path curl:** it folds the path into contact with itself, not into bridgeable gaps; it also costs restarts and made loops *worse* every time it was measured (13% → 12% in 7.1, 32% → 28% at 8.1's defaults).
+- **The connector rule:** it pushes rooms (where most free doors are) apart, and loops fell from 19% to 13%.
+
+What moved the rate:
+1. **A free door in the middle of the layout:** the T junction, 10% → 19% before connectors.
+2. **Branches that aim for a far room:** 13% → 19%.
+3. **The room budget, the last generator lever:** `target_rooms` 12 gave all branches about 4 rooms to share. Replacing it with a per-floor branch count, and keeping aimed branches out of dead ends, took loops from 19% to 32% (2–3 branches) or 45% (3–5).
+
+The generator levers are spent. From here, loops come from content: rooms with three or four doors, which the door-supply number above already asks for at 3+ branches.
 
 ---
 
@@ -123,13 +320,14 @@ Measured over 300–1000 seeds (`tools/dungeon_tests.gd` and a one-off sweep).
 |---|---|---|---|
 | `main_path_length` | 6 | Rooms between START and EXIT. The exit is always this + 1 deep. | The chain boxes itself in more: first-try success drops from 85% to 72% at 9 and 56% at 12, and the odd seed fails all 5 restarts (an error, no floor). The main path ignores `target_rooms`, so 12 gives about 15 rooms. |
 | `max_branch_depth` | 3 | Rooms per branch | At 1, branches are single side rooms off the path; at the default most stop at 2–3 anyway (deepest averages 2.6). Raise it with `target_rooms` or it changes little. |
-| `target_rooms` | 12 | Non-corridor rooms per floor, START and EXIT included. Branches fill up to it. | It can't go past what the main path's spare doors can hold: 16 gives 15.4 rooms, 20 gives 17.6. Branches only start from main-path doors. |
+| `target_rooms` | (gone) | Replaced in 8.1 by `branch_count_min` / `branch_count_max` and the `max_rooms` ceiling; see Step 8. | |
 | `treasure_chance` | 0.15 | Per normal slot, after the corridor roll | At 0.15, 36% of floors have no treasure (0.87 per floor). 0.25 gives 1.29 per floor with 17% empty; 0.35 gives 1.62 with 6% empty, and most floors hit the cap of 2. |
 | `max_treasure_per_floor` | 2 | Cap on treasure rooms | Higher only matters once `treasure_chance` is up. |
 | `loop_chance` | 0.6 | Per loop candidate, shortest first | A door with several candidates gets several rolls, so the real rate per door is a bit higher. At today's candidate counts it matters less than the two knobs below. |
 | `max_loop_length` | 5 | Longest bridge, in cells. Shortcuts, not hallways. | Started at 4 as you asked; loops landed on only 7% of floors there, so it's at 5 per your "bump to 5 first" (10–11%). 6 gives 15%. Past that, bridges stop reading as shortcuts. |
 | `loop_min_separation` | 3 | Fewest rooms between a bridge's two ends, along the layout before the bridge. 1 = neighbours. | This is the real limiter, not length: at length 5, separation 2 gives loops on 21% of floors and 1 on 35%. At 1, "loops" are pointless circles between adjacent rooms. |
 | `main_path_curl` (7.1) | 0 | Main path prefers doors and room turns that face back toward START | See Step 7.1: pulls the exit in, doesn't add loops, costs restarts. |
+| `aimed_branch_chance` / `aim_strength` (8) | 0.6 / 1.0 | Branches that aim for a far room's door and close a loop | See Step 8. |
 | `door_retry_limit`, `max_attempts`, `max_restarts`, `seed_value` | 4, 200, 5, 0 | As before | |
 
 `corridor_chance` and `max_corridor_chain` are gone (7.1); the connector rule decides where corridors go.
@@ -394,7 +592,7 @@ A row's `enemy` is read by ENEMY points and its `item` by WEAPON points; a row w
 
 ### Generator tunables — `Main.tscn → DungeonGenerator`
 
-The shape knobs (`main_path_length`, `max_branch_depth`, `target_rooms`, treasure, loops, corridors, retries) are in **Step 7**; step 7 replaced this step's single growth loop and removed `recency_bias` and the forced treasure-then-exit ending. The rest:
+The shape knobs are in **Step 7** and **Step 8** (main path, branches, treasure, loops, retries); step 7 replaced this step's single growth loop and removed `recency_bias` and the forced treasure-then-exit ending. The rest:
 
 | Knob | Default | What it does |
 |---|---|---|
@@ -661,7 +859,8 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 | Command (from the project root) | What it does |
 |---|---|
 | `godot --headless --path . --script res://tools/generate_placeholder_assets.gd` | Regenerates the palette PNG, the synthesized placeholder SFX, the weapon meshes and the 32×32 weapon icons (deterministic) |
-| `godot --headless --path . --script res://tools/dungeon_tests.gd [-- 1000 20 20 300]` | Generator checks.<br>• `rotate_cell` against real transforms, every catalog door at every rotation, and the authoring warnings firing on broken rooms.<br>• A batch of seeded layouts, printing the shape line for the first seeds (`seed 7: main 6, branches 3 (max depth 2), treasure at depths [3, 3], loops 0`). Every seed must have exit depth `main_path_length + 1`, exactly `main_path_length` main rooms, no branch over `max_branch_depth`, treasure within the cap, rooms within `target_rooms`, every tree link room ↔ connector, and no overlaps. Every loop bridge must be 1×1 pieces with both doors used, at most `max_loop_length` long, and join rooms at least `loop_min_separation` apart, recomputed independently over the layout as it was just before that bridge. It reports restarts, rooms, branches, the treasure depth spread, loops with their lengths, candidates per floor, how many candidate-less floors a longer cap would rescue, plugs, the main path's length in cells, the exit's distance from START, and size, plus an ASCII map of seed 1.<br>• The **loop table** (share of floors with a loop for separation 1/2/3 × cap 4/5/6) and the **curl table** (exit distance, main path, first-try success and loops at curl 0/0.5/1.0).<br>• Same seed twice giving the same plan, and the placement rules honoured.<br>• Real builds, plus the first 3 seeds that have a loop (at least one with a corner piece): every connected door (bridge pieces included) meets its partner, every other door is plugged, spawned nodes match the spawn log, and the player lands on the start spawn.<br>• **Map:** a rebuild clears it, `MapModel` matches the built rooms, spawning reveals only the start room, walking in reveals the next room whole with one signal, revisiting changes nothing, and M swaps the maps without pausing.<br>• **Spawn tables:** each table rolled 22,000 times against its weights, each enemy variant's HP, scale, capsule and tint on the real scene, and the same seed built twice giving identical spawn logs. It prints seed 1's log.<br>The arguments are batch size, build count, per-seed lines and seeds per table cell. About 50 s with the defaults. Exit code 0 means pass. |
+| `godot --headless --path . --script res://tools/dungeon_tests.gd [-- 1000 20 20 300]` | Generator checks.<br>• `rotate_cell` against real transforms, every catalog door at every rotation, and the authoring warnings firing on broken rooms.<br>• A batch of seeded layouts, printing the shape line for the first seeds (`seed 1: main 12, branches 5/5 (depths 3,6,6,5,6), aimed 5 (closed 1), halls 41 (mean 1.6, 2 extended, 10 capped), loops 8 (len 6, 4, 6, 7, 8, 8, 9, 10), treasure at depths [2, 10], candidates 12`). Every seed must have exit depth `main_path_length + 1`, exactly `main_path_length` main rooms (a spine of `main_path_length + 2`), a branch count rolled within `branch_count_min`..`max` with no more branches than rolled, `max_rooms` and `max_attempts` never binding, no branch over `max_branch_depth`, treasure within the cap, rooms within `max_rooms`, every link room ↔ hall ↔ room (no room hangs off a room, every hall piece leads on), every hall 1–`max_hall_pieces` pieces, every failed link (with `verify_unplace` on) leaving the occupied cells, placements, counts and its door exactly as it found them, and no overlaps. Every loop bridge must be 1×1 pieces with both doors used, at most `max_loop_length` long, and join rooms at least `loop_min_separation` apart, recomputed independently over the layout as it was just before that bridge. It reports restarts, placement tries, rooms, branches, halls (pieces per hall, extends, caps), doors per room and the share used, the treasure depth spread, loops with their lengths, candidates per floor, how many candidate-less floors a longer cap would rescue, plugs, how often the door supply ran out before the rolled branch count, aimed-branch outcomes (closed, gave up at depth, hit `max_rooms`, dead end, nothing fit, no target) and their mean length, mean bridge length, the main path's length in cells, the exit's distance from START, and size, plus an ASCII map of seed 1.<br>• The **loop table**: share of floors with a loop, loops per floor and mean bridge length, for separation 1/2/3 × cap 5/10 at the defaults. (The step-8.1 branch table and step-7.1 curl table are gone; their numbers are in those sections.)<br>• Same seed twice giving the same plan, and the placement rules honoured.<br>• Real builds, plus the first 3 seeds that have a loop (at least one with a corner piece): every connected door (bridge pieces included) meets its partner, every other door is plugged, spawned nodes match the spawn log, and the player lands on the start spawn.<br>• **Map:** a rebuild clears it, `MapModel` matches the built rooms, spawning reveals only the start room, walking in reveals the next room whole with one signal, revisiting changes nothing, and M swaps the maps without pausing.<br>• **Spawn tables:** each table rolled 22,000 times against its weights, each enemy variant's HP, scale, capsule and tint on the real scene, and the same seed built twice giving identical spawn logs. It prints seed 1's log.<br>The arguments are batch size, build count, per-seed lines and seeds per table cell. About 135 s with `-- 1000 20 12 300`. Exit code 0 means pass. |
+| `godot --headless --path . --script res://tools/plan_map.gd -- out.png 1 2 3` | Headless, no GPU. Plans each seed with the real generator (restarting like `generate()`) and draws it as a cell map on one sheet, three per row. Rooms are light grey on the main path and dark grey on branches; halls are darker strips; yellow is a loop bridge, green START, orange EXIT and tan treasure. White notches are used doors and red ones plugged. Each seed's shape line is printed. `docs/plans_step9.png` is seeds 1–12. |
 | `godot --path . --script res://tools/capture_map.gd -- out.png 10 40` | Opens a window. Per seed it walks the floor, room by room, except the last two branch rooms, ending in the exit. It grabs the corner map (doubled) and the M full map, one row per seed. Seed 40 has a 5-cell L-shaped loop bridge. |
 | `godot --path . --script res://tools/capture_dungeon.gd -- out.png 1 2 3` | Opens a window and renders a top-down view (ceilings hidden) and the view from spawn for each seed given |
 | `godot --headless --path . --script res://tools/combat_smoke_test.gd` | Drives `tests/CombatArena.tscn` (the step-1 room, so it stays deterministic) with input events, in four parts.<br>**Part A (inventory and weapons):**<br>• E into the bag (and ignored while blocking); Tab pausing; every drop rule, driven through the slots' own drop handlers with real payloads; the right-click shortcuts; the tooltip and stats.<br>• Drop to world and pick it back up; fists unable to swing; the iron cap turning 15 into 12 (and 2 into 1); the full-bag flip and notice; an equip during a swing waiting for it to end.<br>• A probe per weapon, measuring swing length, the hitbox open/close times, lunge distance and stamina spent against that weapon's data.<br>• Against a frozen grunt: damage per weapon, a swing from touching distance, and a swing step that glances off the grunt and must stop instead of sliding round it.<br>**Part B (fresh scene, grunt):** data applied, strike lunge, block, the windup turn cap, facing and position locked through RECOVER/COOLDOWN, hit-and-back-off caught, an early retreat escaping, a lunge that glances off you staying on its line, and a punish to the kill.<br>**Part C (fresh scene, behaviours):**<br>• Skitterer: spots you and out-runs your walk; crouches at 5 m and pounces for 8; a block eats the pounce; point-blank it bites.<br>• Bruiser: roars and charges from 7 m, hitting for 35 and slowing you to half speed for 1.5 s; a blocked charge does nothing but still stops; sidestepped into the arena wall it's dazed through exactly 3 sword hits, then COOLDOWN.<br>**Part D (fresh scene, perception and noise):** unseen 4 m behind it and seen 4 m in front; losing sight → SEARCH → walks to the spot → home to IDLE; the arena's `Pillar` blocking line of sight; a sneak hit waking a second grunt by noise; walking past silent, sprinting past heard.<br>Exit code 0 means pass. |
@@ -719,6 +918,32 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - **The player triangle sits at your exact position**, not your cell's center, so the centered corner map scrolls smoothly instead of jumping 4 m at a time. Position and yaw changes share the 10 Hz redraw throttle.
 - **The corner map sits under the controls hint line**, since the hint already held the top-left corner. M also hides the corner map while the full one is up. M does nothing while paused (inventory open), like every other key but Tab.
 - **The full map frames what you've revealed**, not the whole floor, so it never gives away the floor's size. It drops below 24 px per cell when the revealed area wouldn't fit.
+- **Step 9, my calls:**
+  - **"Shuffled by rng" is a weighted shuffle.** A hall's room tries every allowed template in a random order drawn by weight (and its first 1–2 pieces likewise), so weights still mean something. Entry doors are a plain shuffle, or steered for an aimed branch.
+  - **A connector only "fits" with a way on:** at least one of its other doors must open onto an empty cell. Otherwise the hall would end in a wall no room can attach to.
+  - **One null doesn't end the main path or a branch.** Each tries every free door of its current room, as `_grow_one` did, and only gives up (restart, or branch over) when none links. Every door that failed is capped.
+  - **A hall is never 0 pieces.** If not even the first piece fits, the link fails, because a room straight on the door would touch a room.
+  - **Capped doors still take loop bridges and aimed targets**, since a 1-cell bridge needs far less room than a hall plus a room.
+  - **Treasure on the main path** hangs off the current room on a hall of its own: one try, only when the room keeps another free door, and the slot stays COMBAT. It used to hang off a connector's side door.
+  - **`bridge_max_len` is `max_loop_length`**, renamed nowhere.
+  - **`max_attempts` 2500 and `max_restarts` 10.** The search tries every template and entry door now, so tries per floor went from tens to hundreds. 200 would have cut almost every floor's branches short without a word.
+  - **Hub doors on 2- and 4-wide sides:** there's no centred cell, so I picked offsets (Gallery N at x = 0 and S at x = 1; Barracks N at x = 1 and S at x = 2).
+  - **Halls draw as one corridor on the map** (`MapModel` groups a hall's pieces like a bridge's). Not asked for, but at 1–4 pieces a hall drawn piece by piece is a row of seams.
+  - **`tools/plan_map.gd` is as attached**, except its restart loop uses the generator's `max_restarts` (it had 5).
+  - **`docs/` holds the map sheets**, with a `.gdignore` so Godot doesn't import them. `plans_step8.png` is the 8.1 generator on the same seeds, for comparison.
+  - **`verify_unplace`** is a plain var (not exported) for the tests. It copies the layout before each link, so it stays off in the game.
+- **Step 8.1, my calls:**
+  - **Branch count is rolled per floor** (`randi_range(min, max)`, inclusive, from the plan's RNG, before the spare doors are shuffled), per your amendment. The decision rule became "smallest pair over 30%", and "set 4" if none got there would have been 3–5.
+  - **A branch only counts once it places a room**, so an aimed branch that closes straight from its start door, with no rooms, makes a loop but doesn't use up a branch.
+  - **Aimed branches skip one-door rooms** by asking `_grow_one` for templates with 2+ doors, and turning a TREASURE roll into COMBAT when no 2-door treasure room exists.
+  - **`max_rooms` binding is checked**, not assumed: `PlanStats.hit_max_rooms`, which the test requires to stay false at the defaults.
+- **Step 8, my calls:**
+  - **Chance 0 skips the roll entirely,** so it builds exactly the step 7.1 floors (that's the chance-0 row of the loop table).
+  - **Grid distance for the target** is Manhattan, between the cells outside the doors (where a bridge would start and end). A target whose outside cell is already occupied is skipped, since no bridge could ever reach it.
+  - **The start door counts as one of the branch's doors** until something attaches to it, so a target already in bridge range closes with no branch rooms at all.
+  - **Closing re-checks separation** over the layout as it stands; the independent check in the test passes for every bridge (closest 3). The link graph is rebuilt from parent links plus bridge ends whenever it's needed, because aimed bridges now appear mid-plan.
+  - **A main-path spare door an aimed bridge used** is skipped when its turn to start a branch comes.
+  - **`PlanStats`** (`DungeonGenerator.last_stats`) replaces `last_loop_candidates`; it carries the loop candidates and every aimed-branch outcome.
 - **Step 7.1, my calls:**
   - **Straight corridor weight:** the handoff says it was already 2, but every corridor was at the default 1. I set it to 2 in piece 1, as the handoff intended.
   - **Connector rule:** the rule lives in `_pick_template` (via the placement it attaches to), so `_grow_one` and every caller get it. Depth, room counts, branch depth and loop separation now key off `is_connector` instead of the CORRIDOR type; today they're the same set.
@@ -733,10 +958,13 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - The hit-puff contact point is the hitbox/body midpoint. Within about 1 m it lands inside the body.
 - The SFX are synthesized placeholders.
 - Torchlight can bleed through walls into a neighbouring room once a torch's shadow fades out (past 16 m). Out of scope for step 3.
-- The graph is still usually a tree: a loop lands on about 1 floor in 8 (13%). Rooms that end up near each other in space are almost always near each other in the layout, the separation rule (3) keeps out pointless circles between neighbours, and corridors between every two rooms now push the free doors apart (numbers in Step 7.1). Curl didn't help. More loops need growth that aims for them, not more tuning. No locked doors. About 0.4 connectors per floor dead-end into a plug.
+- Every floor loops at the step-9 defaults (4.9 bridges per floor at separation 3), but at cap 10, 22% of bridges are 9–10 cells: long unlit corridors more than shortcuts. Cap 5 still loops 93% of floors at this size. No locked doors.
 - Loop bridges are unlit (no torch in the 1×1 pieces), so they read as dark passages between lit rooms.
-- Treasure is a dice roll now, not a guarantee: at the default `treasure_chance` almost half the floors (47%) have none since the connector rule.
-- Branches only start from main-path doors, so a high `target_rooms` falls short: 16 averages 15.4 rooms and 20 averages 17.6 (spare doors run out).
+- Treasure is still a dice roll, not a guarantee. At step 9's size it's 1.7 per floor, and 6% of floors have none.
+- Branches only start from main-path doors (rooms and hall T's), so asking for many branches falls short when those run out. That happens on 1.9% of floors at step 9's 4–6 branches; at step 8.1's size it was 48%.
+- About 1 seed in 5 restarts because the 12-room main path boxed itself in (a restart is free, about 30 ms). A hall never re-rolls its first pieces, only extends from the end, so a hall that starts into a pocket fails even where another first piece would have led out.
+- A step-9 floor builds 100–170 scenes with 120–180 shadow-casting torches (they fade from 24 m). It builds in about 0.1 s headless; frame rate on a full floor hasn't been looked at.
+- `Hub_5x5`'s platform is only reached by its four ramps; its 0.5 m edge is a wall. Enemies don't pathfind, so one chasing you across the hub can get stuck against that edge.
 - The generated room scenes list every shared resource in their headers, including ones a given room doesn't use. Godot drops the unused ones the first time you save each room in the editor.
 - No pathfinding. CHASE and SEARCH walk straight at their goal, so an enemy that lost you round a corner walks into the wall until SEARCH's 6 s give-up moves it on. A `NavigationRegion3D` baked per room would be the fix.
 - Noise ignores walls: a fight in one room wakes enemies within 9 m in the next. Cheap occlusion would be a ray per listener with a radius penalty when it's blocked.

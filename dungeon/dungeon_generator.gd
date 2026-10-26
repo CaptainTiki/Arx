@@ -2,9 +2,11 @@ class_name DungeonGenerator
 extends Node
 ## Builds a floor from prefab rooms by attaching them door to door on a 4 m grid.
 ## Plans the whole layout as data first (restarts are free), then instantiates it. The plan runs in
-## three passes: a main path START -> EXIT, branches off its spare doors, then loop-backs: short
-## corridors routed through empty cells between unused doors of rooms that are far apart.
-## Rooms never touch rooms: every link is room -> connector (a corridor) -> room.
+## three passes: a main path START -> EXIT, branches off its spare doors (some of them aimed at a far
+## room's door, closing a loop when they get close), then loop-backs: short corridors routed through
+## empty cells between whatever unused doors of far-apart rooms are left close together.
+## Rooms never touch rooms: every link is room -> hall -> room, where a hall is a chain of 1 to
+## max_hall_pieces connector pieces that bends round whatever is in the way (see _grow_link).
 ##
 ## Rotation convention: `turns` = clockwise quarter turns seen from above (-Z is north).
 ## A room with `turns` gets rotation_degrees.y = -90 * turns, and its node is offset so the
@@ -19,37 +21,54 @@ const LOOP_CORNER: String = "Corridor_Corner"
 const UNREACHABLE: int = 1 << 20
 
 @export var catalog: RoomCatalog
-## Placement tries that fail on overlap before this layout is abandoned (then restarted).
-@export var max_attempts: int = 200
+## Placement tries that fail on overlap before this layout is abandoned (then restarted). Every
+## template and entry door a hall or room tries counts: at the defaults a floor spends about 320
+## (1,240 at worst over 1000 seeds), so this is twice the worst and never binds.
+@export var max_attempts: int = 2500
 ## 0 = random every generate; nonzero = reproducible.
 @export var seed_value: int = 0
 
 @export_group("Shape")
 ## Rooms (not connectors) between START and EXIT, counting neither. The exit is always this + 1 rooms deep.
-@export var main_path_length: int = 6
+@export var main_path_length: int = 12
+## Branches each floor tries to grow off the main path, rolled per floor between these two. Only a
+## branch that placed at least one room counts; one that places nothing makes way for the next door.
+@export var branch_count_min: int = 4
+@export var branch_count_max: int = 6
 ## Rooms (not connectors) per branch, at most.
-@export var max_branch_depth: int = 3
-## Rooms (not connectors) on the whole floor, START and EXIT included. Branches fill up to this.
-@export var target_rooms: int = 12
+@export var max_branch_depth: int = 6
+## Hard ceiling on rooms (not connectors), START and EXIT included. A safety stop for big presets;
+## it shouldn't bind at the defaults.
+@export var max_rooms: int = 64
+## Most connector pieces in one hall (the chain between two rooms). A hall starts at 1 or 2 pieces
+## and extends one piece at a time, up to this, while no room fits on its end.
+@export var max_hall_pieces: int = 4
+## Connectors an extending hall tries, in this order, before any others: bends first, so a blocked
+## hall turns round the obstacle instead of running straight into it.
+@export var hall_extend_order: PackedStringArray = ["Corridor_L", "Corridor_Straight", "Corridor_T", "Corridor_4", "Corridor_2"]
 ## Chance a room slot (main path or branch) is a treasure room.
 @export_range(0.0, 1.0) var treasure_chance: float = 0.15
 @export var max_treasure_per_floor: int = 2
 ## Chance each loop candidate (see below) gets bridged, shortest route first.
 @export_range(0.0, 1.0) var loop_chance: float = 0.6
-## Longest loop bridge, in cells. Shortcuts, not hallways. (4 found a loop on 7% of floors; 5 on 10%.)
-@export var max_loop_length: int = 5
+## Longest loop bridge, in cells, an aimed branch's closing bridge included.
+@export var max_loop_length: int = 10
 ## Fewest rooms (not connectors) you'd walk through to get between two rooms before a bridge may
 ## join them. 1 = neighbours; 3 = you went somewhere and came back.
 @export var loop_min_separation: int = 3
 ## How much the main path prefers doors (and room turns) that face back toward START, so it curls
 ## round instead of marching away. 0 = no preference. Branches never curl. Off by default: it pulls
-## the exit closer (94 m -> 72 m at 0.5) but didn't raise the loop rate, and at 0.5 about 1 seed in
-## 200 boxes itself in for all 5 restarts (raise max_restarts to 10 if you turn it on).
+## the exit closer but didn't raise the loop rate, and costs restarts (see NOTES, step 7.1).
 @export_range(0.0, 1.0) var main_path_curl: float = 0.0
-## Placement tries per door (a fresh template and entry door each) before that door is given up on.
-@export var door_retry_limit: int = 4
-## Fresh-seed restarts when the main path boxes itself in, before giving up loudly.
-@export var max_restarts: int = 5
+## Chance a branch off the main path is aimed: it picks the nearest free door on a room at least
+## loop_min_separation rooms away, grows toward it, and closes the loop with a bridge (at most
+## max_loop_length cells) as soon as one fits. Otherwise, or with no such door, a normal branch.
+@export_range(0.0, 1.0) var aimed_branch_chance: float = 0.6
+## How hard an aimed branch steers toward its target (the weighting curl uses). 0 = it doesn't steer.
+@export var aim_strength: float = 1.0
+## Fresh-seed restarts when the main path boxes itself in, before giving up loudly. A 12-room main
+## path boxes itself in about 1 seed in 5; 1 seed in 1000 needed 5 restarts, so 10 leaves headroom.
+@export var max_restarts: int = 10
 
 @export_group("Scene")
 ## Rooms are added here. Also the noise hub every spawned enemy gets, and the owner of the map.
@@ -68,8 +87,11 @@ const UNREACHABLE: int = 1 << 20
 var last_seed: int = 0
 ## One line per spawn point of the current floor, in build order. Same seed = same lines.
 var last_spawn_log: PackedStringArray = []
-## Door pairs the loop pass could have bridged on the most recent plan, counted before it placed any.
-var last_loop_candidates: int = 0
+## What the most recent plan's passes did beyond the placements: halls, loop candidates, aimed branches.
+var last_stats: PlanStats = PlanStats.new()
+## For the tests: every failed link checks that taking its hall back out left the layout exactly as
+## it found it (PlanStats.unplace_checked / unplace_leaks). Off in the game; it copies the layout.
+var verify_unplace: bool = false
 
 ## Room.Type -> Array of RoomTemplate.
 var _templates: Dictionary[int, Array] = {}
@@ -87,7 +109,7 @@ func generate(forced_seed: int = 0) -> void:
 		plan = _plan(rng)
 		if not plan.is_empty():
 			last_seed = run_seed
-			print("Dungeon seed %d: %s%s" % [run_seed, describe_plan(plan, last_loop_candidates), " (after %d restart(s))" % restart if restart > 0 else ""])
+			print("Dungeon seed %d: %s%s" % [run_seed, describe_plan(plan, last_stats), " (after %d restart(s))" % restart if restart > 0 else ""])
 			break
 		print("Dungeon seed %d: main path boxed itself in, restarting" % run_seed)
 	if plan.is_empty():
@@ -106,9 +128,11 @@ func plan_layout(run_seed: int) -> Array[Placement]:
 	return _plan(rng)
 
 
-## One-line shape summary, e.g. "main 6, branches 3 (max depth 2), treasure at depths [2, 5],
-## loops 1 (len 3), candidates 4". The candidates part only when `loop_candidates` is given.
-static func describe_plan(plan: Array[Placement], loop_candidates: int = -1) -> String:
+## One-line shape summary, e.g. "main 12, branches 5/5 (depths 6,2,4,1,6), aimed 3 (closed 1),
+## halls 41 (mean 1.6, 7 extended, 3 capped), loops 2 (len 4, 9), treasure at depths [3, 8],
+## candidates 4". Without `stats` the branch part is counted from the plan ("branches 4 (max depth
+## 3)") and the aimed, hall and candidate parts are left out.
+static func describe_plan(plan: Array[Placement], stats: PlanStats = null) -> String:
 	var main: int = 0
 	var branches: int = 0
 	var deepest: int = 0
@@ -133,98 +157,381 @@ static func describe_plan(plan: Array[Placement], loop_candidates: int = -1) -> 
 		for bridge: int in bridge_cells:
 			lengths.append(str(bridge_cells[bridge]))
 		loops += " (len %s)" % ", ".join(lengths)
-	if loop_candidates >= 0:
-		loops += ", candidates %d" % loop_candidates
-	return "main %d, branches %d (max depth %d), treasure at depths %s, %s" % [main, branches, deepest, treasure, loops]
+	if stats == null:
+		return "main %d, branches %d (max depth %d), %s, treasure at depths %s" % [main, branches, deepest, loops, treasure]
+	var depths: PackedStringArray = []
+	for depth: int in stats.branch_depths:
+		depths.append(str(depth))
+	var hall_pieces: int = 0
+	for pieces: int in stats.hall_lengths:
+		hall_pieces += pieces
+	return "main %d, branches %d/%d (depths %s), aimed %d (closed %d), halls %d (mean %.1f, %d extended, %d capped), %s, treasure at depths %s, candidates %d" % [
+		main, stats.branch_depths.size(), stats.branches_wanted, ",".join(depths), stats.aimed, stats.aimed_closed,
+		stats.hall_lengths.size(), float(hall_pieces) / maxi(stats.hall_lengths.size(), 1), stats.halls_extended, stats.links_capped,
+		loops, treasure, stats.loop_candidates]
 
 
 func _plan(rng: RandomNumberGenerator) -> Array[Placement]:
 	_load_templates()
-	last_loop_candidates = 0
+	last_stats = PlanStats.new()
 	var layout: Layout = Layout.new()
 	layout.rng = rng
-	if not _plan_main_path(layout):
+	var reached_exit: bool = _plan_main_path(layout)
+	layout.stats.attempts = layout.attempts
+	last_stats = layout.stats
+	if not reached_exit:
 		var failed: Array[Placement] = []
 		return failed
 	_plan_branches(layout)
 	_plan_loops(layout)
-	last_loop_candidates = layout.loop_candidates
+	layout.stats.attempts = layout.attempts
 	return layout.placements
 
 
-## START -> C -> R -> C -> R ... -> C -> EXIT, with main_path_length rooms R and a connector C
-## before each room and before the exit. False if it boxed itself in.
+## START -> hall -> R -> hall -> R ... -> hall -> EXIT, with main_path_length rooms R. Each step
+## tries the current room's free doors until a link takes. False if it boxed itself in.
 func _plan_main_path(layout: Layout) -> bool:
-	var frontier: Array[OpenDoor] = []
 	var start: RoomTemplate = _pick_template(layout, Room.Type.START, 0)
-	var current: Placement = _place(start, Vector2i.ZERO, 0, null, -1, layout.placements, layout.occupied, frontier)
+	var current: Placement = _place(layout, start, Vector2i.ZERO, 0, null, -1)
 	current.main_path = true
-	layout.count(current)
 	layout.start_center = Vector2(current.grid_origin) + Vector2(rotated_footprint(start.footprint, 0)) * 0.5
-	var rooms: int = 0
-	while true:
-		var type: int = _next_type(layout, current)
-		if rooms == main_path_length and type != Room.Type.CORRIDOR:
-			type = Room.Type.EXIT
-		if type != Room.Type.EXIT and not _has_template(type, 2):
-			# Every room of this type is a dead end (the treasure room has one door), so it can't be a
-			# link in the chain. It goes on one of the connector's other doors instead, as long as the
-			# path keeps one to carry on from, and doesn't use up a main-path slot.
-			if frontier.size() >= 2:
-				var side_doors: Array[OpenDoor] = []
-				if _grow_one(layout, frontier, type, side_doors):
-					_drop_used(frontier)
-					continue
+	for slot: int in main_path_length + 1:
+		var exit: bool = slot == main_path_length
+		var type: int = Room.Type.EXIT if exit else _room_type(layout)
+		if type == Room.Type.TREASURE and not _has_template(type, 2):
+			# Every treasure room is a dead end (one door), so it can't be a link in the chain. It hangs
+			# off one of this room's other doors on a hall of its own instead, as long as the room keeps
+			# a door to carry on from, and doesn't use up a main-path slot.
+			var doors: Array[OpenDoor] = _growable_doors(layout, current)
+			if doors.size() >= 2:
+				_grow_link(layout, doors[layout.rng.randi_range(0, doors.size() - 1)], type, 1)
 			type = Room.Type.COMBAT
-		var opened: Array[OpenDoor] = []
-		var next: Placement = _grow_one(layout, frontier, type, opened, 1 if type == Room.Type.EXIT else 2, main_path_curl)
+		var next: Placement = _link_from(layout, _unused_doors(current), type, 1 if exit else 2, main_path_curl, layout.start_center)
 		if next == null:
 			return false
-		next.main_path = true
-		if type == Room.Type.EXIT:
-			return true
+		# The room and the hall that leads to it.
+		var at: Placement = next
+		while at != current:
+			at.main_path = true
+			at = at.parent
 		current = next
-		frontier = opened
-		if not next.template.is_connector:
-			rooms += 1
-	return false
+	return true
 
 
-## Chains of up to max_branch_depth rooms off the main path's spare doors (alternating with connectors,
-## like the main path), until target_rooms is reached.
+## Branches off the main path's spare doors (its rooms' and its halls' T junctions'): chains of up to
+## max_branch_depth rooms, each behind its own hall. Each floor rolls how many it wants
+## (branch_count_min..max) and keeps starting branches until that many have placed a room, the
+## spare doors run out, or max_rooms is hit. At aimed_branch_chance a branch is aimed: it steers
+## toward a far room's free door and ends early by bridging to it (see _close_aimed).
 func _plan_branches(layout: Layout) -> void:
+	var straight: RoomTemplate = _template_named(LOOP_STUB)
+	var corner: RoomTemplate = _template_named(LOOP_CORNER)
+	layout.stats.branches_wanted = layout.rng.randi_range(mini(branch_count_min, branch_count_max), maxi(branch_count_min, branch_count_max))
 	var spare: Array[OpenDoor] = []
 	for placement: Placement in layout.placements:
 		if placement.main_path:
 			spare.append_array(_unused_doors(placement))
 	_shuffle(layout.rng, spare)
-	while layout.rooms < target_rooms and not spare.is_empty():
-		var doors: Array[OpenDoor] = [spare.pop_back()]
+	while layout.stats.branch_depths.size() < layout.stats.branches_wanted and not spare.is_empty() and layout.rooms < max_rooms:
+		var start: OpenDoor = spare.pop_back()
+		if start.placement.used_doors.has(start.index):
+			# An aimed branch's bridge ended here.
+			continue
+		var target: OpenDoor = null
+		# No roll at all at chance 0, so those floors match the ones built before aiming existed.
+		if aimed_branch_chance > 0.0 and straight and corner and layout.rng.randf() < aimed_branch_chance:
+			target = _pick_target(layout, start)
+			if target == null:
+				layout.stats.aimed_no_target += 1
+		var aim: float = 0.0
+		var toward: Vector2 = Vector2.ZERO
+		if target:
+			layout.stats.aimed += 1
+			aim = aim_strength
+			toward = Vector2(target.cell + Door.offset(target.dir)) + Vector2(0.5, 0.5)
+		# Every piece and room the branch places, for _close_aimed.
+		var branch: Array[Placement] = []
+		var doors: Array[OpenDoor] = [start]
 		var depth: int = 0
-		while not doors.is_empty() and depth < max_branch_depth and layout.rooms < target_rooms:
-			var opened: Array[OpenDoor] = []
-			var room: Placement = _grow_one(layout, doors, _next_type(layout, doors[0].placement), opened)
+		var closed: bool = target != null and _close_aimed(layout, start, branch, target, straight, corner)
+		while not closed and not doors.is_empty() and depth < max_branch_depth and layout.rooms < max_rooms:
+			var type: int = _room_type(layout)
+			# An aimed branch has to keep a way on, so no one-door rooms (the treasure room) for it.
+			if target and not _has_template(type, 2):
+				type = Room.Type.COMBAT
+			var placed_before: int = layout.placements.size()
+			var room: Placement = _link_from(layout, doors, type, 2 if target else 1, aim, toward)
 			if room == null:
 				break
-			if not room.template.is_connector:
-				depth += 1
-			# The branch carries on through one of the new room's other doors (whichever fits first).
-			doors = opened
+			# A failed link takes its pieces back out, so everything past placed_before is this link.
+			branch.append_array(layout.placements.slice(placed_before))
+			depth += 1
+			# The branch carries on through one of the new room's other doors (whichever links first).
+			doors = _unused_doors(room)
+			closed = target != null and _close_aimed(layout, start, branch, target, straight, corner)
+		if depth > 0:
+			layout.stats.branch_depths.append(depth)
+		if target:
+			layout.stats.aimed_pieces.append(branch.size())
+			if closed:
+				layout.stats.aimed_closed += 1
+			elif depth >= max_branch_depth:
+				layout.stats.aimed_gave_up += 1
+			elif layout.rooms >= max_rooms:
+				layout.stats.aimed_out_of_rooms += 1
+			elif doors.is_empty():
+				layout.stats.aimed_dead_end += 1
+			else:
+				layout.stats.aimed_blocked += 1
+	layout.stats.hit_max_rooms = layout.rooms >= max_rooms
+
+
+## Tries `doors` in random order (or, with `bias`, favouring doors that face `toward`), growing a
+## link from each one that can still grow, and returns the first room that took. Null if none did;
+## every door that failed is capped by then.
+func _link_from(layout: Layout, doors: Array[OpenDoor], type: int, min_doors: int, bias: float, toward: Vector2) -> Placement:
+	var order: Array[OpenDoor] = doors.duplicate()
+	if bias > 0.0:
+		var weights: Array[float] = []
+		for door: OpenDoor in doors:
+			weights.append(_bias_weight(bias, _faces(toward, door.cell, door.dir)))
+		order.clear()
+		for index: int in _weighted_order(layout.rng, weights):
+			order.append(doors[index])
+	else:
+		_shuffle(layout.rng, order)
+	for door: OpenDoor in order:
+		if not _can_grow(layout, door):
+			continue
+		var room: Placement = _grow_link(layout, door, type, min_doors, bias, toward)
+		if room:
+			return room
+	return null
+
+
+## One link: a hall from `from`, then a room of `type` (with at least `min_doors` doors) on its far
+## end. The hall starts as 1 or 2 connectors picked by weight. While no room fits on its end it
+## extends one piece at a time, up to max_hall_pieces, trying bends first so it steers round
+## whatever is in the way. If no room ever fits, every piece is taken back out and `from` is capped:
+## never grown from again, and plugged at build unless a loop bridge ends there. Null then.
+func _grow_link(layout: Layout, from: OpenDoor, type: int, min_doors: int, bias: float = 0.0, toward: Vector2 = Vector2.ZERO) -> Placement:
+	layout.stats.links += 1
+	var snapshot: LayoutSnapshot = LayoutSnapshot.take(layout, from) if verify_unplace else null
+	var pieces: Array[Placement] = []
+	var frontier: OpenDoor = from
+	var extended: bool = false
+	for i: int in mini(layout.rng.randi_range(1, 2), max_hall_pieces):
+		var next: OpenDoor = _add_connector(layout, frontier, pieces, false, bias, toward)
+		if next == null:
+			break
+		frontier = next
+	# No pieces means not even the first one fit; a room straight on `from` would touch a room.
+	while not pieces.is_empty():
+		var room: Placement = _try_room(layout, frontier, type, min_doors, bias, toward)
+		if room:
+			layout.stats.hall_lengths.append(pieces.size())
+			if extended:
+				layout.stats.halls_extended += 1
+			return room
+		if pieces.size() >= max_hall_pieces:
+			break
+		var next: OpenDoor = _add_connector(layout, frontier, pieces, true, bias, toward)
+		if next == null:
+			break
+		extended = true
+		frontier = next
+	for k: int in range(pieces.size() - 1, -1, -1):
+		_unplace(layout, pieces[k])
+	from.placement.capped_doors.append(from.index)
+	layout.stats.links_capped += 1
+	if extended:
+		layout.stats.capped_after_extend += 1
+	if snapshot:
+		layout.stats.unplace_checked += 1
+		if not snapshot.matches(layout, from):
+			layout.stats.unplace_leaks += 1
+	return null
+
+
+## Adds one connector to a hall on `door`: by weight, or on an extend step in hall_extend_order
+## first. Every template and entry door is tried until one fits with an exit onto an empty cell (a
+## piece with no way on would be a dead end). Returns the exit the hall carries on through; a T's
+## other exit stays free for a branch or a bridge. Null if nothing fits.
+func _add_connector(layout: Layout, door: OpenDoor, pieces: Array[Placement], extend: bool, bias: float, toward: Vector2) -> OpenDoor:
+	var neighbor: Vector2i = door.cell + Door.offset(door.dir)
+	var options: Array[RoomTemplate] = []
+	var weights: Array[float] = []
+	for template: RoomTemplate in _templates.get(Room.Type.CORRIDOR, []):
+		if template.is_connector and _allowed(layout, template, door.placement.depth, 2):
+			options.append(template)
+			weights.append(template.weight)
+	var order: Array[RoomTemplate] = []
+	if extend:
+		for template_name: String in hall_extend_order:
+			for template: RoomTemplate in options:
+				if template.name == template_name:
+					order.append(template)
+		for template: RoomTemplate in options:
+			if not order.has(template):
+				order.append(template)
+	else:
+		for index: int in _weighted_order(layout.rng, weights):
+			order.append(options[index])
+	for template: RoomTemplate in order:
+		for entry: int in _entry_order(layout, door, template, bias, toward):
+			if layout.attempts >= max_attempts:
+				return null
+			var turns: int = posmod(Door.opposite_of(door.dir) - template.door_dirs[entry], 4)
+			var origin: Vector2i = neighbor - rotate_cell(template.door_cells[entry], template.footprint, turns)
+			if not _fits(origin, rotated_footprint(template.footprint, turns), layout.occupied):
+				layout.attempts += 1
+				continue
+			var exits: Array[int] = []
+			for index: int in template.door_dirs.size():
+				var cell: Vector2i = origin + rotate_cell(template.door_cells[index], template.footprint, turns)
+				if index != entry and not layout.occupied.has(cell + Door.offset(Door.rotated(template.door_dirs[index], turns))):
+					exits.append(index)
+			if exits.is_empty():
+				layout.attempts += 1
+				continue
+			var piece: Placement = _place(layout, template, origin, turns, door, entry)
+			pieces.append(piece)
+			var exit: int = exits[0]
+			if exits.size() > 1:
+				if bias > 0.0:
+					var exit_weights: Array[float] = []
+					for index: int in exits:
+						exit_weights.append(_bias_weight(bias, _faces(toward, piece.door_cell(index), piece.door_dir(index))))
+					exit = exits[_weighted_pick(layout.rng, exit_weights)]
+				else:
+					exit = exits[layout.rng.randi_range(0, exits.size() - 1)]
+			return _open_door(piece, exit)
+	return null
+
+
+## The room on a hall's end: every template of `type` allowed here, in a weighted random order, at
+## every entry door (random order, or with `bias` favouring turns that face `toward`). The first
+## that fits is placed. Null if none fits.
+func _try_room(layout: Layout, door: OpenDoor, type: int, min_doors: int, bias: float, toward: Vector2) -> Placement:
+	var neighbor: Vector2i = door.cell + Door.offset(door.dir)
+	var options: Array[RoomTemplate] = []
+	var weights: Array[float] = []
+	for template: RoomTemplate in _templates.get(type, []):
+		if _allowed(layout, template, door.placement.depth + 1, min_doors):
+			options.append(template)
+			weights.append(template.weight)
+	for index: int in _weighted_order(layout.rng, weights):
+		var template: RoomTemplate = options[index]
+		for entry: int in _entry_order(layout, door, template, bias, toward):
+			if layout.attempts >= max_attempts:
+				return null
+			var turns: int = posmod(Door.opposite_of(door.dir) - template.door_dirs[entry], 4)
+			var origin: Vector2i = neighbor - rotate_cell(template.door_cells[entry], template.footprint, turns)
+			if not _fits(origin, rotated_footprint(template.footprint, turns), layout.occupied):
+				layout.attempts += 1
+				continue
+			return _place(layout, template, origin, turns, door, entry)
+	return null
+
+
+## The order to try a template's doors as the one meeting `door`: a plain shuffle, or with `bias`
+## a weighted one where an entry scores by the best of the template's other doors (as they'd end up
+## placed) at pointing toward `toward`, so the growth can turn.
+func _entry_order(layout: Layout, door: OpenDoor, template: RoomTemplate, bias: float, toward: Vector2) -> Array[int]:
+	var entries: Array[int] = []
+	for entry: int in template.door_dirs.size():
+		entries.append(entry)
+	if bias <= 0.0:
+		_shuffle(layout.rng, entries)
+		return entries
+	var neighbor: Vector2i = door.cell + Door.offset(door.dir)
+	var weights: Array[float] = []
+	for entry: int in entries:
+		var turns: int = posmod(Door.opposite_of(door.dir) - template.door_dirs[entry], 4)
+		var origin: Vector2i = neighbor - rotate_cell(template.door_cells[entry], template.footprint, turns)
+		var best: float = 0.0
+		var first: bool = true
+		for other: int in template.door_dirs.size():
+			if other == entry:
+				continue
+			var cell: Vector2i = origin + rotate_cell(template.door_cells[other], template.footprint, turns)
+			var score: float = _faces(toward, cell, Door.rotated(template.door_dirs[other], turns))
+			best = score if first else maxf(best, score)
+			first = false
+		weights.append(_bias_weight(bias, best))
+	return _weighted_order(layout.rng, weights)
+
+
+## An aimed branch's goal: the free door on a room (not a connector) at least loop_min_separation
+## rooms from where the branch starts, nearest the start door on the grid. Its outside cell must be
+## empty so a bridge can end there. Ties go to placement order, then door order. Null if none.
+func _pick_target(layout: Layout, start: OpenDoor) -> OpenDoor:
+	_rebuild_links(layout)
+	var separation: Dictionary[Placement, int] = _separations(layout, start.placement)
+	var from: Vector2i = start.cell + Door.offset(start.dir)
+	var best: OpenDoor = null
+	var best_distance: int = UNREACHABLE
+	for placement: Placement in layout.placements:
+		if placement.template.is_connector or separation.get(placement, UNREACHABLE) < loop_min_separation:
+			continue
+		for door: OpenDoor in _unused_doors(placement):
+			var outside: Vector2i = door.cell + Door.offset(door.dir)
+			if layout.occupied.has(outside):
+				continue
+			var distance: int = absi(outside.x - from.x) + absi(outside.y - from.y)
+			if distance < best_distance:
+				best = door
+				best_distance = distance
+	return best
+
+
+## Closes an aimed branch if it can: of the branch's free doors (the start door included, until
+## something attaches there), those whose routed bridge to the target fits in max_loop_length cells
+## between rooms still loop_min_separation apart, lays the shortest. True if it laid one.
+func _close_aimed(layout: Layout, start: OpenDoor, branch: Array[Placement], target: OpenDoor, straight: RoomTemplate, corner: RoomTemplate) -> bool:
+	if target.placement.used_doors.has(target.index):
+		return false
+	var goal: Vector2i = target.cell + Door.offset(target.dir)
+	var doors: Array[OpenDoor] = []
+	if not start.placement.used_doors.has(start.index):
+		doors.append(start)
+	for placement: Placement in branch:
+		doors.append_array(_unused_doors(placement))
+	var best_door: OpenDoor = null
+	var best_route: Array[Vector2i] = []
+	var linked: bool = false
+	for door: OpenDoor in doors:
+		var from: Vector2i = door.cell + Door.offset(door.dir)
+		# A route of n cells spans at most n - 1 steps; skip the search when it can't fit.
+		if absi(goal.x - from.x) + absi(goal.y - from.y) + 1 > max_loop_length:
+			continue
+		var route: Array[Vector2i] = _route(layout, door, target)
+		if route.is_empty() or (best_door and route.size() >= best_route.size()):
+			continue
+		if not linked:
+			_rebuild_links(layout)
+			linked = true
+		if _separations(layout, door.placement).get(target.placement, UNREACHABLE) < loop_min_separation:
+			continue
+		best_door = door
+		best_route = route
+	if best_door == null:
+		return false
+	_lay_bridge(layout, best_door, target, best_route, straight, corner)
+	return true
 
 
 ## Bridges unused doors on rooms at least loop_min_separation rooms apart with a corridor routed
 ## through empty cells: one 1x1 piece per cell (straight or corner), at most max_loop_length cells.
 ## Candidates are tried shortest route first, ties in placement order, each at loop_chance. This is
-## what turns the tree into a graph.
+## what turns the tree into a graph. Capped doors count: a bridge needs far less room than a hall.
 func _plan_loops(layout: Layout) -> void:
 	var straight: RoomTemplate = _template_named(LOOP_STUB)
 	var corner: RoomTemplate = _template_named(LOOP_CORNER)
 	if straight == null or corner == null:
 		push_warning("DungeonGenerator: %s or %s is missing from the catalog; floors will have no loops." % [LOOP_STUB, LOOP_CORNER])
 		return
-	for placement: Placement in layout.placements:
-		if placement.parent:
-			_link(layout, placement, placement.parent)
+	_rebuild_links(layout)
 	# Unused doors opening onto empty cells, in placement order (then door order): the tie-break order.
 	var doors: Array[OpenDoor] = []
 	for placement: Placement in layout.placements:
@@ -234,7 +541,12 @@ func _plan_loops(layout: Layout) -> void:
 	var candidates: Array[LoopCandidate] = []
 	for i: int in doors.size():
 		var separation: Dictionary[Placement, int] = _separations(layout, doors[i].placement)
+		var from: Vector2i = doors[i].cell + Door.offset(doors[i].dir)
 		for j: int in range(i + 1, doors.size()):
+			var to: Vector2i = doors[j].cell + Door.offset(doors[j].dir)
+			# A route of n cells spans at most n - 1 steps; skip the search when it can't fit.
+			if absi(to.x - from.x) + absi(to.y - from.y) + 1 > max_loop_length:
+				continue
 			if separation.get(doors[j].placement, UNREACHABLE) < loop_min_separation:
 				continue
 			var route: Array[Vector2i] = _route(layout, doors[i], doors[j])
@@ -247,7 +559,7 @@ func _plan_loops(layout: Layout) -> void:
 			candidate.second = j
 			candidate.length = route.size()
 			candidates.append(candidate)
-	layout.loop_candidates = candidates.size()
+	layout.stats.loop_candidates = candidates.size()
 	candidates.sort_custom(func(x: LoopCandidate, y: LoopCandidate) -> bool:
 		if x.length != y.length:
 			return x.length < y.length
@@ -267,7 +579,7 @@ func _plan_loops(layout: Layout) -> void:
 
 
 ## Rooms entered on the shortest walk from `from` to each placement over the plan's connections so
-## far (parents and bridges). Connectors are free, so neighbours are 1 apart.
+## far (parents and bridges). Connectors are free, so rooms one hall apart are 1 apart.
 func _separations(layout: Layout, from: Placement) -> Dictionary[Placement, int]:
 	var steps: Dictionary[Placement, int] = {from: 0}
 	# 0-1 BFS: a free step (into a corridor) goes to the front of the queue.
@@ -323,8 +635,8 @@ func _route(layout: Layout, a: OpenDoor, b: OpenDoor) -> Array[Vector2i]:
 ## room to b's.
 func _lay_bridge(layout: Layout, a: OpenDoor, b: OpenDoor, route: Array[Vector2i], straight: RoomTemplate, corner: RoomTemplate) -> void:
 	layout.bridges += 1
-	a.placement.used_doors.append(a.index)
-	var previous: Placement = a.placement
+	var via: OpenDoor = a
+	var piece: Placement = null
 	for k: int in route.size():
 		var back: int = Door.opposite_of(a.dir) if k == 0 else _dir_to(route[k], route[k - 1])
 		var ahead: int = Door.opposite_of(b.dir) if k == route.size() - 1 else _dir_to(route[k], route[k + 1])
@@ -333,16 +645,25 @@ func _lay_bridge(layout: Layout, a: OpenDoor, b: OpenDoor, route: Array[Vector2i
 		var turns: int = back % 2
 		if template == corner:
 			turns = back if posmod(ahead - back, 4) == 1 else ahead
-		var exits: Array[OpenDoor] = []
-		var piece: Placement = _place(template, route[k], turns, previous, _door_facing(template, turns, back), layout.placements, layout.occupied, exits)
+		piece = _place(layout, template, route[k], turns, via, _door_facing(template, turns, back))
 		piece.loop = true
 		piece.bridge_id = layout.bridges
-		piece.used_doors.append(exits[0].index)
-		_link(layout, previous, piece)
-		previous = piece
+		_link(layout, via.placement, piece)
+		via = _open_door(piece, _door_facing(template, turns, ahead))
+	piece.used_doors.append(via.index)
 	b.placement.used_doors.append(b.index)
-	previous.bridge_end = b.placement
-	_link(layout, previous, b.placement)
+	piece.bridge_end = b.placement
+	_link(layout, piece, b.placement)
+
+
+## Who connects to whom right now: every parent link, plus each bridge's far end.
+static func _rebuild_links(layout: Layout) -> void:
+	layout.links.clear()
+	for placement: Placement in layout.placements:
+		if placement.parent:
+			_link(layout, placement, placement.parent)
+		if placement.bridge_end:
+			_link(layout, placement, placement.bridge_end)
 
 
 static func _link(layout: Layout, one: Placement, other: Placement) -> void:
@@ -370,76 +691,15 @@ static func _dir_to(from: Vector2i, to: Vector2i) -> int:
 	return -1
 
 
-## The door-attach step: tries `doors` in random order, each up to door_retry_limit times (a fresh
-## template and entry door per try), and places the first fit. The new room's other doors go into
-## `opened`. `min_doors` 2 keeps dead ends out where a way on is needed. Null if nothing fit.
-## `curl` above 0 (main path only) favours doors, and entry doors, that turn the floor back toward START.
-func _grow_one(layout: Layout, doors: Array[OpenDoor], type: int, opened: Array[OpenDoor], min_doors: int = 1, curl: float = 0.0) -> Placement:
-	var order: Array[OpenDoor] = doors.duplicate()
-	if curl > 0.0:
-		var weights: Array[float] = []
-		for door: OpenDoor in doors:
-			weights.append(_curl_weight(curl, _faces_start(layout, door.cell, door.dir)))
-		order.clear()
-		for index: int in _weighted_order(layout.rng, weights):
-			order.append(doors[index])
-	else:
-		_shuffle(layout.rng, order)
-	for door: OpenDoor in order:
-		var neighbor: Vector2i = door.cell + Door.offset(door.dir)
-		if layout.occupied.has(neighbor):
-			# Faces another room's wall; nothing can ever attach here.
-			continue
-		var depth: int = door.placement.depth + (0 if type == Room.Type.CORRIDOR else 1)
-		for attempt: int in door_retry_limit:
-			if layout.attempts >= max_attempts:
-				return null
-			var template: RoomTemplate = _pick_template(layout, type, depth, min_doors, door.placement)
-			if template == null:
-				return null
-			var entry: int = layout.rng.randi_range(0, template.door_dirs.size() - 1) if curl <= 0.0 else _curled_entry(layout, door, template, curl)
-			var turns: int = posmod(Door.opposite_of(door.dir) - template.door_dirs[entry], 4)
-			var origin: Vector2i = neighbor - rotate_cell(template.door_cells[entry], template.footprint, turns)
-			if not _fits(origin, rotated_footprint(template.footprint, turns), layout.occupied):
-				layout.attempts += 1
-				continue
-			door.placement.used_doors.append(door.index)
-			var placement: Placement = _place(template, origin, turns, door.placement, entry, layout.placements, layout.occupied, opened)
-			layout.count(placement)
-			return placement
-	return null
+## How squarely a door on `cell` facing `dir` points at `toward` (cells): 1 straight at it, -1 away.
+static func _faces(toward: Vector2, cell: Vector2i, dir: int) -> float:
+	var to: Vector2 = toward - (Vector2(cell) + Vector2(0.5, 0.5))
+	return Vector2(Door.offset(dir)).dot(to.normalized())
 
 
-## Which of the template's doors meets `door`, weighted by curl: an entry scores by the best of the
-## room's other doors (as they'd end up placed) at pointing back toward START, so the path can turn.
-func _curled_entry(layout: Layout, door: OpenDoor, template: RoomTemplate, curl: float) -> int:
-	var neighbor: Vector2i = door.cell + Door.offset(door.dir)
-	var weights: Array[float] = []
-	for entry: int in template.door_dirs.size():
-		var turns: int = posmod(Door.opposite_of(door.dir) - template.door_dirs[entry], 4)
-		var origin: Vector2i = neighbor - rotate_cell(template.door_cells[entry], template.footprint, turns)
-		var best: float = 0.0
-		var first: bool = true
-		for other: int in template.door_dirs.size():
-			if other == entry:
-				continue
-			var cell: Vector2i = origin + rotate_cell(template.door_cells[other], template.footprint, turns)
-			var score: float = _faces_start(layout, cell, Door.rotated(template.door_dirs[other], turns))
-			best = score if first else maxf(best, score)
-			first = false
-		weights.append(_curl_weight(curl, best))
-	return _weighted_pick(layout.rng, weights)
-
-
-## How squarely a door on `cell` facing `dir` points back at START's middle: 1 straight at it, -1 away.
-static func _faces_start(layout: Layout, cell: Vector2i, dir: int) -> float:
-	var back: Vector2 = layout.start_center - (Vector2(cell) + Vector2(0.5, 0.5))
-	return Vector2(Door.offset(dir)).dot(back.normalized())
-
-
-static func _curl_weight(curl: float, score: float) -> float:
+static func _bias_weight(bias: float, score: float) -> float:
 	# Clamped so nothing becomes impossible.
-	return maxf(0.1, 1.0 + curl * score)
+	return maxf(0.1, 1.0 + bias * score)
 
 
 ## One index of `weights`, drawn in proportion to its weight.
@@ -470,11 +730,8 @@ static func _weighted_order(rng: RandomNumberGenerator, weights: Array[float]) -
 	return order
 
 
-## The connector rule: a room is followed by a connector (CORRIDOR); a connector by a room, TREASURE
-## at treasure_chance while under the floor cap, else COMBAT.
-func _next_type(layout: Layout, from: Placement) -> int:
-	if not from.template.is_connector:
-		return Room.Type.CORRIDOR
+## TREASURE at treasure_chance while under the floor cap, else COMBAT.
+func _room_type(layout: Layout) -> int:
 	if layout.treasure < max_treasure_per_floor and layout.rng.randf() < treasure_chance:
 		return Room.Type.TREASURE
 	return Room.Type.COMBAT
@@ -550,56 +807,59 @@ func _load_templates() -> void:
 			push_error("DungeonGenerator: catalog has no %s room." % Room.Type.keys()[type])
 
 
-func _place(template: RoomTemplate, origin: Vector2i, turns: int, parent: Placement, entry: int,
-		placements: Array[Placement], occupied: Dictionary[Vector2i, Placement], open_doors: Array[OpenDoor]) -> Placement:
+## Adds `template` to the layout with its rotated footprint's min corner on `origin`, hanging off
+## `via` (null for START) by its own door `entry`. Marks `via` used and counts the placement.
+func _place(layout: Layout, template: RoomTemplate, origin: Vector2i, turns: int, via: OpenDoor, entry: int) -> Placement:
 	var placement: Placement = Placement.new()
 	placement.template = template
 	placement.grid_origin = origin
 	placement.turns = turns
-	placement.parent = parent
-	# Depth counts rooms, not connectors: a connector sits at its parent's depth.
-	if parent:
-		placement.depth = parent.depth + (0 if template.is_connector else 1)
+	if via:
+		via.placement.used_doors.append(via.index)
+		placement.parent = via.placement
+		placement.parent_door = via.index
+		# Depth counts rooms, not connectors: a connector sits at its parent's depth.
+		placement.depth = via.placement.depth + (0 if template.is_connector else 1)
 	if entry >= 0:
 		placement.used_doors.append(entry)
 	for cell: Vector2i in placement.cells():
-		occupied[cell] = placement
-	for index: int in template.door_dirs.size():
-		if index == entry:
-			continue
-		var door: OpenDoor = OpenDoor.new()
-		door.placement = placement
-		door.index = index
-		door.cell = placement.door_cell(index)
-		door.dir = placement.door_dir(index)
-		open_doors.append(door)
-	placements.append(placement)
+		layout.occupied[cell] = placement
+	layout.placements.append(placement)
+	layout.count(placement)
 	return placement
 
 
-## A weighted pick among the templates of `type` allowed at `depth`: weight above 0, at least
-## `min_doors` doors, deep enough (min_depth_from_start), not used up (max_per_floor), and on the
-## other side of the connector rule from `from` (the room it attaches to). Null if none is.
-func _pick_template(layout: Layout, type: int, depth: int, min_doors: int = 1, from: Placement = null) -> RoomTemplate:
+## Takes the most recent placement back out: the exact reverse of _place (cells freed, the parent's
+## door free again, the counts undone).
+func _unplace(layout: Layout, placement: Placement) -> void:
+	assert(layout.placements.back() == placement, "_unplace takes placements out in reverse order")
+	layout.placements.pop_back()
+	for cell: Vector2i in placement.cells():
+		layout.occupied.erase(cell)
+	if placement.parent:
+		placement.parent.used_doors.erase(placement.parent_door)
+	layout.uncount(placement)
+
+
+## A weighted pick among the templates of `type` allowed at `depth` (see _allowed). Null if none is.
+func _pick_template(layout: Layout, type: int, depth: int, min_doors: int = 1) -> RoomTemplate:
 	var options: Array[RoomTemplate] = []
-	var total: float = 0.0
+	var weights: Array[float] = []
 	for template: RoomTemplate in _templates.get(type, []):
-		if template.weight <= 0.0 or template.door_dirs.size() < min_doors or depth < template.min_depth_from_start:
-			continue
-		if from and template.is_connector == from.template.is_connector:
-			continue
-		if template.max_per_floor > 0 and layout.placed.get(template.name, 0) >= template.max_per_floor:
-			continue
-		options.append(template)
-		total += template.weight
+		if _allowed(layout, template, depth, min_doors):
+			options.append(template)
+			weights.append(template.weight)
 	if options.is_empty():
 		return null
-	var roll: float = layout.rng.randf() * total
-	for template: RoomTemplate in options:
-		roll -= template.weight
-		if roll <= 0.0:
-			return template
-	return options.back()
+	return options[_weighted_pick(layout.rng, weights)]
+
+
+## The placement rules: weight above 0, at least `min_doors` doors, deep enough
+## (min_depth_from_start) and not used up (max_per_floor).
+func _allowed(layout: Layout, template: RoomTemplate, depth: int, min_doors: int) -> bool:
+	if template.weight <= 0.0 or template.door_dirs.size() < min_doors or depth < template.min_depth_from_start:
+		return false
+	return template.max_per_floor <= 0 or layout.placed.get(template.name, 0) < template.max_per_floor
 
 
 ## Whether any pickable template of `type` has at least `min_doors` doors.
@@ -618,26 +878,36 @@ func _template_named(template_name: String) -> RoomTemplate:
 	return null
 
 
-## The placement's doors nothing is attached to, as OpenDoors.
+## The placement's doors nothing is attached to, as OpenDoors. Capped ones included.
 static func _unused_doors(placement: Placement) -> Array[OpenDoor]:
 	var doors: Array[OpenDoor] = []
 	for index: int in placement.template.door_dirs.size():
-		if placement.used_doors.has(index):
-			continue
-		var door: OpenDoor = OpenDoor.new()
-		door.placement = placement
-		door.index = index
-		door.cell = placement.door_cell(index)
-		door.dir = placement.door_dir(index)
-		doors.append(door)
+		if not placement.used_doors.has(index):
+			doors.append(_open_door(placement, index))
 	return doors
 
 
-## Removes doors something has been attached to since they were listed.
-static func _drop_used(doors: Array[OpenDoor]) -> void:
-	for i: int in range(doors.size() - 1, -1, -1):
-		if doors[i].placement.used_doors.has(doors[i].index):
-			doors.remove_at(i)
+## The placement's doors a link could still grow from: unused, not capped, opening onto an empty cell.
+static func _growable_doors(layout: Layout, placement: Placement) -> Array[OpenDoor]:
+	var doors: Array[OpenDoor] = []
+	for door: OpenDoor in _unused_doors(placement):
+		if _can_grow(layout, door):
+			doors.append(door)
+	return doors
+
+
+static func _can_grow(layout: Layout, door: OpenDoor) -> bool:
+	return not door.placement.used_doors.has(door.index) and not door.placement.capped_doors.has(door.index) \
+		and not layout.occupied.has(door.cell + Door.offset(door.dir))
+
+
+static func _open_door(placement: Placement, index: int) -> OpenDoor:
+	var door: OpenDoor = OpenDoor.new()
+	door.placement = placement
+	door.index = index
+	door.cell = placement.door_cell(index)
+	door.dir = placement.door_dir(index)
+	return door
 
 
 ## Fisher-Yates with the plan's own RNG. Array.shuffle() would use the global one and break seeds.
@@ -757,10 +1027,14 @@ class Placement:
 	var grid_origin: Vector2i
 	var turns: int
 	var used_doors: Array[int] = []
+	## Doors a link failed to grow from: never tried again, plugged at build unless a bridge ends there.
+	var capped_doors: Array[int] = []
 	var parent: Placement
+	## The parent's door this one hangs off; -1 for START.
+	var parent_door: int = -1
 	## Rooms (not connectors) between START and this one: START is 0, the exit main_path_length + 1.
 	var depth: int = 0
-	## On the START -> EXIT chain.
+	## On the START -> EXIT chain (its halls included).
 	var main_path: bool = false
 	## A piece of a loop bridge (a 1x1 corridor between two otherwise unused doors).
 	var loop: bool = false
@@ -812,8 +1086,7 @@ class Layout:
 	var start_center: Vector2 = Vector2.ZERO
 	## Who connects to whom (parents, then bridges), for the loop pass's separation rule.
 	var links: Dictionary[Placement, Array] = {}
-	## Door pairs the loop pass could bridge, counted before it laid any.
-	var loop_candidates: int = 0
+	var stats: PlanStats = PlanStats.new()
 	var bridges: int = 0
 
 	func count(placement: Placement) -> void:
@@ -822,6 +1095,77 @@ class Layout:
 			rooms += 1
 		if placement.template.type == Room.Type.TREASURE:
 			treasure += 1
+
+	func uncount(placement: Placement) -> void:
+		placed[placement.template.name] -= 1
+		if placed[placement.template.name] == 0:
+			placed.erase(placement.template.name)
+		if not placement.template.is_connector:
+			rooms -= 1
+		if placement.template.type == Room.Type.TREASURE:
+			treasure -= 1
+
+
+## The parts of a Layout a failed link must leave as it found them, copied before the link starts.
+class LayoutSnapshot:
+	var occupied: Dictionary[Vector2i, Placement]
+	var placements: int
+	var placed: Dictionary[String, int]
+	var rooms: int
+	var treasure: int
+	var from_used: Array[int]
+
+	static func take(layout: Layout, from: OpenDoor) -> LayoutSnapshot:
+		var snapshot: LayoutSnapshot = LayoutSnapshot.new()
+		snapshot.occupied = layout.occupied.duplicate()
+		snapshot.placements = layout.placements.size()
+		snapshot.placed = layout.placed.duplicate()
+		snapshot.rooms = layout.rooms
+		snapshot.treasure = layout.treasure
+		snapshot.from_used = from.placement.used_doors.duplicate()
+		return snapshot
+
+	func matches(layout: Layout, from: OpenDoor) -> bool:
+		return layout.occupied == occupied and layout.placements.size() == placements and layout.placed == placed \
+			and layout.rooms == rooms and layout.treasure == treasure and from.placement.used_doors == from_used
+
+
+## What a plan's passes did beyond the placements themselves, for the log line and the tests.
+class PlanStats:
+	## Branches this floor rolled for (branch_count_min..max), and the room depth of each one that
+	## placed a room, in the order they grew. Fewer depths than wanted = the spare doors ran out.
+	var branches_wanted: int = 0
+	var branch_depths: Array[int] = []
+	## The branch pass stopped on max_rooms (it shouldn't, at the defaults).
+	var hit_max_rooms: bool = false
+	## Links tried (_grow_link calls); the pieces in each hall that got a room on its end, in order;
+	## how many of those halls had to extend past their first 1-2 pieces; links that found no room and
+	## capped their door, and how many of those had extended first.
+	var links: int = 0
+	var hall_lengths: Array[int] = []
+	var halls_extended: int = 0
+	var links_capped: int = 0
+	var capped_after_extend: int = 0
+	## With verify_unplace: failed links checked, and how many left the layout changed (must be 0).
+	var unplace_checked: int = 0
+	var unplace_leaks: int = 0
+	## Placement tries that didn't fit, against max_attempts.
+	var attempts: int = 0
+	## Door pairs the loop pass (the last one) could bridge, counted before it laid any.
+	var loop_candidates: int = 0
+	## Aimed branches that found a target, and how each ended: closed into a loop, hit
+	## max_branch_depth first, ran into max_rooms, ended in a one-door room (they can't pick one, so
+	## this should stay 0), or found nothing that fit.
+	var aimed: int = 0
+	var aimed_closed: int = 0
+	var aimed_gave_up: int = 0
+	var aimed_out_of_rooms: int = 0
+	var aimed_dead_end: int = 0
+	var aimed_blocked: int = 0
+	## Rolled aimed but found no far room's free door to aim at, so grew as a normal branch.
+	var aimed_no_target: int = 0
+	## Rooms and connectors each aimed branch placed before it ended, its closing bridge not counted.
+	var aimed_pieces: Array[int] = []
 
 
 ## A door pair the loop pass could bridge, with its route length when the list was made.

@@ -1,0 +1,193 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://dungeon/room.gd" id="1_room"]
+[ext_resource type="Script" path="res://dungeon/door.gd" id="2_door"]
+[ext_resource type="Script" path="res://dungeon/spawn_point.gd" id="3_spawn"]
+[ext_resource type="Material" path="res://art/materials/stone_floor.tres" id="4_floor"]
+[ext_resource type="Material" path="res://art/materials/stone_wall.tres" id="5_wall"]
+[ext_resource type="Material" path="res://art/materials/stone_ceiling.tres" id="6_ceiling"]
+[ext_resource type="PackedScene" path="res://world/Torch.tscn" id="7_torch"]
+[ext_resource type="Material" path="res://art/materials/wood.tres" id="8_wood"]
+[ext_resource type="PackedScene" path="res://enemy/Enemy.tscn" id="9_enemy"]
+[ext_resource type="Resource" path="res://weapons/rusty_sword.tres" id="10_sword"]
+[ext_resource type="Resource" path="res://weapons/woodcutters_axe.tres" id="11_axe"]
+[ext_resource type="Resource" path="res://data/tables/combat_enemy.tres" id="13_combat_enemy"]
+[ext_resource type="Resource" path="res://data/tables/combat_weapon.tres" id="14_combat_weapon"]
+
+[node name="Hub_5x5" type="Node3D"]
+script = ExtResource("1_room")
+type = 2
+footprint = Vector2i(5, 5)
+
+[node name="Geometry" type="Node3D" parent="."]
+
+[node name="Floor" type="CSGBox3D" parent="Geometry"]
+position = Vector3(10, -0.1, 10)
+use_collision = true
+size = Vector3(20, 0.2, 20)
+material = ExtResource("4_floor")
+
+[node name="Ceiling" type="CSGBox3D" parent="Geometry"]
+position = Vector3(10, 4.1, 10)
+size = Vector3(20, 0.2, 20)
+material = ExtResource("6_ceiling")
+
+[node name="Walls" type="CSGCombiner3D" parent="Geometry"]
+use_collision = true
+
+[node name="WallNorth" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(10, 2, 0.15)
+size = Vector3(20, 4, 0.3)
+material = ExtResource("5_wall")
+
+[node name="WallSouth" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(10, 2, 19.85)
+size = Vector3(20, 4, 0.3)
+material = ExtResource("5_wall")
+
+[node name="WallWest" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(0.15, 2, 10)
+size = Vector3(0.3, 4, 20)
+material = ExtResource("5_wall")
+
+[node name="WallEast" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(19.85, 2, 10)
+size = Vector3(0.3, 4, 20)
+material = ExtResource("5_wall")
+
+[node name="DoorwayN" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(10, 1.5, 0.15)
+operation = 2
+size = Vector3(2, 3, 0.5)
+material = ExtResource("5_wall")
+
+[node name="DoorwayE" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(19.85, 1.5, 10)
+operation = 2
+size = Vector3(0.5, 3, 2)
+material = ExtResource("5_wall")
+
+[node name="DoorwayS" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(10, 1.5, 19.85)
+operation = 2
+size = Vector3(2, 3, 0.5)
+material = ExtResource("5_wall")
+
+[node name="DoorwayW" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(0.15, 1.5, 10)
+operation = 2
+size = Vector3(0.5, 3, 2)
+material = ExtResource("5_wall")
+
+[node name="DoorwayS2" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(2, 1.5, 19.85)
+operation = 2
+size = Vector3(2, 3, 0.5)
+material = ExtResource("5_wall")
+
+[node name="Platform" type="CSGCombiner3D" parent="Geometry"]
+use_collision = true
+
+[node name="Top" type="CSGBox3D" parent="Geometry/Platform"]
+position = Vector3(10, 0.25, 10)
+size = Vector3(8, 0.5, 8)
+material = ExtResource("4_floor")
+
+[node name="RampN" type="CSGBox3D" parent="Geometry/Platform"]
+position = Vector3(10, 0.0075, 5.0606)
+rotation = Vector3(-0.245, 0, 0)
+size = Vector3(2, 0.5, 2.0616)
+material = ExtResource("4_floor")
+
+[node name="RampE" type="CSGBox3D" parent="Geometry/Platform"]
+position = Vector3(14.9394, 0.0075, 10)
+rotation = Vector3(-0.245, -1.5708, 0)
+size = Vector3(2, 0.5, 2.0616)
+material = ExtResource("4_floor")
+
+[node name="RampS" type="CSGBox3D" parent="Geometry/Platform"]
+position = Vector3(10, 0.0075, 14.9394)
+rotation = Vector3(-0.245, 3.1416, 0)
+size = Vector3(2, 0.5, 2.0616)
+material = ExtResource("4_floor")
+
+[node name="RampW" type="CSGBox3D" parent="Geometry/Platform"]
+position = Vector3(5.0606, 0.0075, 10)
+rotation = Vector3(-0.245, 1.5708, 0)
+size = Vector3(2, 0.5, 2.0616)
+material = ExtResource("4_floor")
+
+[node name="Lights" type="Node3D" parent="."]
+
+[node name="TorchN" parent="Lights" instance=ExtResource("7_torch")]
+position = Vector3(5, 2.4, 0.35)
+
+[node name="TorchE" parent="Lights" instance=ExtResource("7_torch")]
+position = Vector3(19.65, 2.4, 4)
+
+[node name="TorchS" parent="Lights" instance=ExtResource("7_torch")]
+position = Vector3(16, 2.4, 19.65)
+
+[node name="TorchW" parent="Lights" instance=ExtResource("7_torch")]
+position = Vector3(0.35, 2.4, 16)
+
+[node name="Doors" type="Node3D" parent="."]
+
+[node name="DoorN" type="Marker3D" parent="Doors"]
+position = Vector3(10, 0, 0)
+script = ExtResource("2_door")
+dir = 0
+
+[node name="DoorE" type="Marker3D" parent="Doors"]
+position = Vector3(20, 0, 10)
+script = ExtResource("2_door")
+dir = 1
+
+[node name="DoorS" type="Marker3D" parent="Doors"]
+position = Vector3(10, 0, 20)
+script = ExtResource("2_door")
+dir = 2
+
+[node name="DoorW" type="Marker3D" parent="Doors"]
+position = Vector3(0, 0, 10)
+script = ExtResource("2_door")
+dir = 3
+
+[node name="DoorS2" type="Marker3D" parent="Doors"]
+position = Vector3(2, 0, 20)
+script = ExtResource("2_door")
+dir = 2
+
+[node name="Spawns" type="Node3D" parent="."]
+
+[node name="EnemyA" type="Marker3D" parent="Spawns"]
+position = Vector3(10, 0.5, 10)
+rotation = Vector3(0, 0, 0)
+script = ExtResource("3_spawn")
+kind = 0
+table = ExtResource("13_combat_enemy")
+fixed_scene = ExtResource("9_enemy")
+
+[node name="EnemyB" type="Marker3D" parent="Spawns"]
+position = Vector3(4, 0, 4)
+rotation = Vector3(0, 0, 0)
+script = ExtResource("3_spawn")
+kind = 0
+table = ExtResource("13_combat_enemy")
+fixed_scene = ExtResource("9_enemy")
+
+[node name="EnemyC" type="Marker3D" parent="Spawns"]
+position = Vector3(16, 0, 16)
+rotation = Vector3(0, 3.1416, 0)
+script = ExtResource("3_spawn")
+kind = 0
+table = ExtResource("13_combat_enemy")
+fixed_scene = ExtResource("9_enemy")
+
+[node name="Weapon" type="Marker3D" parent="Spawns"]
+position = Vector3(12, 0.5, 8)
+rotation = Vector3(0, 0.8, 0)
+script = ExtResource("3_spawn")
+kind = 1
+table = ExtResource("14_combat_weapon")
+fixed_item = ExtResource("10_sword")

@@ -77,7 +77,7 @@ func _draw_map() -> void:
 		if room and not room.map_tile:
 			_canvas.draw_rect(Rect2(origin + Vector2(cell) * px, Vector2(px, px)), _floor_color(room))
 	# Walls: every revealed cell edge that borders another room or nothing. Neighbouring rooms each
-	# draw their own side, so a shared wall reads as a dark seam. A loop bridge counts as one room.
+	# draw their own side, so a shared wall reads as a dark seam. A hall or a loop bridge counts as one room.
 	for cell: Vector2i in revealed:
 		for dir: int in 4:
 			if not model.joined(cell, cell + Door.offset(dir)):

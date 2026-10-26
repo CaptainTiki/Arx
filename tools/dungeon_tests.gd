@@ -4,14 +4,16 @@ extends SceneTree
 ## 1. rotate_cell() against the real node transform, for every footprint up to 5x5 and every turn.
 ## 2. Every catalog door, at every rotation, lands on the edge center the planner thinks it does.
 ## 3. A batch of seeded layouts: exit depth, main path length, branch depth, treasure cap and depth
-##    spread, loop bridge length and separation, loop candidates (and whether the length cap is what
-##    limits them), overlaps, restarts, size. Plus same seed = same plan, and the placement rules.
+##    spread, halls (length, extends, caps, and that a failed link leaves the layout exactly as it
+##    found it), doors used, loop bridge length and separation, loop candidates (and whether the
+##    length cap is what limits them), overlaps, restarts, size. Plus same seed = same plan, and the
+##    placement rules.
 ## 4. Real builds: every connected door pair (loop stubs included) meets in world space, every other
 ##    door is plugged.
 ## 5. The map: the player's cell reveals rooms, a rebuild hides them.
 ## 6. Spawn tables: roll frequencies match weights, enemy variants apply, same seed = same spawns.
 ## Run from the project root:
-##   godot --headless --path . --script res://tools/dungeon_tests.gd [-- <batch size> <build count> <per-seed lines>]
+##   godot --headless --path . --script res://tools/dungeon_tests.gd [-- <batch size> <build count> <per-seed lines> <table seeds>]
 
 const RESTART_STRIDE: int = 7919
 
@@ -47,10 +49,8 @@ func _run() -> void:
 	print("-- %d seeded layouts" % batch_size)
 	_batch(generator, batch_size, summary_lines)
 
-	print("-- loop table, %d seeds per cell" % table_seeds)
-	_loop_table(generator, table_seeds)
-	print("-- main path curl, %d seeds each" % table_seeds)
-	_curl_table(generator, table_seeds)
+	print("-- loop table at the defaults, %d seeds per cell" % table_seeds)
+	_loop_grid(generator, table_seeds)
 	_test_same_plan(generator)
 	_test_placement_rules(generator)
 
@@ -168,8 +168,31 @@ func _batch(generator: DungeonGenerator, count: int, summary_lines: int) -> void
 	var too_deep: int = 0
 	var too_much_treasure: int = 0
 	var too_many_rooms: int = 0
+	var wrong_spine: int = 0
+	var bad_branch_counts: int = 0
+	var short_floors: int = 0
+	var shortfall: int = 0
+	var hit_max_rooms: int = 0
+	var branches_got: int = 0
+	var branches_wanted: int = 0
 	var rooms_sum: int = 0
-	var touching: int = 0
+	var rooms_on_rooms: int = 0
+	var dangling: int = 0
+	var bad_halls: int = 0
+	var links: int = 0
+	var capped: int = 0
+	var capped_after_extend: int = 0
+	var halls_extended: int = 0
+	var hall_histogram: Dictionary[int, int] = {}
+	var unplace_checked: int = 0
+	var unplace_leaks: int = 0
+	var caps_to_check: int = 0
+	var attempts_sum: int = 0
+	var attempts_most: int = 0
+	var room_doors: int = 0
+	var room_doors_used: int = 0
+	var all_doors: int = 0
+	var all_doors_used: int = 0
 	var main_cells_sum: int = 0
 	var exit_distance_sum: float = 0.0
 	var branches_sum: int = 0
@@ -181,27 +204,39 @@ func _batch(generator: DungeonGenerator, count: int, summary_lines: int) -> void
 	var loops_sum: int = 0
 	var floors_with_loops: int = 0
 	var candidates_sum: int = 0
+	var aimed: int = 0
+	var aimed_closed: int = 0
+	var aimed_gave_up: int = 0
+	var aimed_out_of_rooms: int = 0
+	var aimed_dead_end: int = 0
+	var aimed_blocked: int = 0
+	var aimed_no_target: int = 0
+	var aimed_pieces: int = 0
 	var no_candidate: int = 0
-	var unlocked_at_5: int = 0
-	var unlocked_at_8: int = 0
+	var unlocked_one_more: int = 0
+	var unlocked_double: int = 0
 	var bridge_lengths: Dictionary[int, int] = {}
 	var too_long: int = 0
 	var bad_pieces: int = 0
 	var too_close: int = 0
 	var closest: int = 1 << 20
 	var plugs: int = 0
-	var dead_end_corridors: int = 0
 	var corridors: int = 0
 	var area_sum: int = 0
 	var span_sum: Vector2i = Vector2i.ZERO
 	var built: int = 0
 	var example: Array[DungeonGenerator.Placement] = []
+	generator.verify_unplace = true
 	for seed_index: int in count:
 		var base: int = seed_index + 1
 		var plan: Array[DungeonGenerator.Placement] = []
 		var restarts: int = 0
 		while restarts <= generator.max_restarts:
 			plan = generator.plan_layout(base + restarts * RESTART_STRIDE)
+			# Failed tries count too: every failed link in them was checked as well.
+			unplace_checked += generator.last_stats.unplace_checked
+			unplace_leaks += generator.last_stats.unplace_leaks
+			caps_to_check += generator.last_stats.links_capped
 			if not plan.is_empty():
 				break
 			restarts += 1
@@ -214,9 +249,49 @@ func _batch(generator: DungeonGenerator, count: int, summary_lines: int) -> void
 		built += 1
 		if example.is_empty():
 			example = plan
-		var candidates: int = generator.last_loop_candidates
+		var stats: DungeonGenerator.PlanStats = generator.last_stats
+		branches_got += stats.branch_depths.size()
+		branches_wanted += stats.branches_wanted
+		if stats.branch_depths.size() < stats.branches_wanted:
+			short_floors += 1
+			shortfall += stats.branches_wanted - stats.branch_depths.size()
+		if stats.hit_max_rooms:
+			hit_max_rooms += 1
+		var lowest: int = mini(generator.branch_count_min, generator.branch_count_max)
+		var highest: int = maxi(generator.branch_count_min, generator.branch_count_max)
+		var depths_ok: bool = true
+		for depth: int in stats.branch_depths:
+			depths_ok = depths_ok and depth >= 1 and depth <= generator.max_branch_depth
+		if stats.branches_wanted < lowest or stats.branches_wanted > highest or stats.branch_depths.size() > stats.branches_wanted or not depths_ok:
+			bad_branch_counts += 1
+		links += stats.links
+		capped += stats.links_capped
+		capped_after_extend += stats.capped_after_extend
+		halls_extended += stats.halls_extended
+		for pieces: int in stats.hall_lengths:
+			hall_histogram[pieces] = hall_histogram.get(pieces, 0) + 1
+			if pieces < 1 or pieces > generator.max_hall_pieces:
+				bad_halls += 1
+		attempts_sum += stats.attempts
+		attempts_most = maxi(attempts_most, stats.attempts)
+		var spine: int = 0
+		for placement: DungeonGenerator.Placement in plan:
+			if placement.main_path and not placement.template.is_connector:
+				spine += 1
+		if spine != generator.main_path_length + 2:
+			wrong_spine += 1
+		var candidates: int = stats.loop_candidates
+		aimed += stats.aimed
+		aimed_closed += stats.aimed_closed
+		aimed_gave_up += stats.aimed_gave_up
+		aimed_out_of_rooms += stats.aimed_out_of_rooms
+		aimed_dead_end += stats.aimed_dead_end
+		aimed_blocked += stats.aimed_blocked
+		aimed_no_target += stats.aimed_no_target
+		for pieces: int in stats.aimed_pieces:
+			aimed_pieces += pieces
 		if seed_index < summary_lines:
-			print("   seed %d: %s" % [base, DungeonGenerator.describe_plan(plan, candidates)])
+			print("   seed %d: %s" % [base, DungeonGenerator.describe_plan(plan, stats)])
 		var occupied: Dictionary[Vector2i, bool] = {}
 		var min_cell: Vector2i = Vector2i(1 << 20, 1 << 20)
 		var max_cell: Vector2i = -min_cell
@@ -225,6 +300,11 @@ func _batch(generator: DungeonGenerator, count: int, summary_lines: int) -> void
 		var treasure: int = 0
 		var bridge_cells: Dictionary[int, int] = {}
 		var deepest: int = 0
+		# Connectors with something of the tree (not a bridge) hanging off them: every hall leads on.
+		var leads_on: Dictionary[DungeonGenerator.Placement, bool] = {}
+		for placement: DungeonGenerator.Placement in plan:
+			if placement.parent and not placement.loop:
+				leads_on[placement.parent] = true
 		for placement: DungeonGenerator.Placement in plan:
 			var type: int = placement.template.type
 			for cell: Vector2i in placement.cells():
@@ -234,25 +314,29 @@ func _batch(generator: DungeonGenerator, count: int, summary_lines: int) -> void
 				min_cell = min_cell.min(cell)
 				max_cell = max_cell.max(cell)
 			plugs += placement.template.door_dirs.size() - placement.used_doors.size()
+			all_doors += placement.template.door_dirs.size()
+			all_doors_used += placement.used_doors.size()
 			if placement.loop:
 				bridge_cells[placement.bridge_id] = bridge_cells.get(placement.bridge_id, 0) + 1
 				if placement.template.footprint != Vector2i.ONE or placement.used_doors.size() != 2 or not placement.template.is_connector:
 					bad_pieces += 1
 				continue
 			deepest = maxi(deepest, placement.branch_depth())
-			# The connector rule: every tree link joins a room and a connector.
-			if placement.parent and placement.template.is_connector == placement.parent.template.is_connector:
-				touching += 1
 			if placement.main_path:
 				main_cells_sum += placement.cells().size()
 			if not placement.main_path and placement.parent.main_path:
 				branches_sum += 1
 			if placement.template.is_connector:
 				corridors += 1
-				if placement.used_doors.size() < 2:
-					dead_end_corridors += 1
+				if not leads_on.has(placement):
+					dangling += 1
 				continue
+			# Rooms never touch rooms: a room hangs off a hall's last piece (START hangs off nothing).
+			if placement.parent and not placement.parent.template.is_connector:
+				rooms_on_rooms += 1
 			rooms += 1
+			room_doors += placement.template.door_dirs.size()
+			room_doors_used += placement.used_doors.size()
 			if placement.main_path and type != Room.Type.START and type != Room.Type.EXIT:
 				main_rooms += 1
 			if type == Room.Type.EXIT:
@@ -262,7 +346,7 @@ func _batch(generator: DungeonGenerator, count: int, summary_lines: int) -> void
 			if type == Room.Type.TREASURE:
 				treasure += 1
 				treasure_by_depth[placement.depth] = treasure_by_depth.get(placement.depth, 0) + 1
-				if placement.parent.main_path:
+				if placement.branch_depth() == 1:
 					main_treasure += 1
 		for separation: int in _bridge_separations(plan):
 			closest = mini(closest, separation)
@@ -280,12 +364,12 @@ func _batch(generator: DungeonGenerator, count: int, summary_lines: int) -> void
 			var plan_seed: int = base + restarts * RESTART_STRIDE
 			generator.max_loop_length = cap + 1
 			generator.plan_layout(plan_seed)
-			if generator.last_loop_candidates > 0:
-				unlocked_at_5 += 1
-			generator.max_loop_length = 8
+			if generator.last_stats.loop_candidates > 0:
+				unlocked_one_more += 1
+			generator.max_loop_length = cap * 2
 			generator.plan_layout(plan_seed)
-			if generator.last_loop_candidates > 0:
-				unlocked_at_8 += 1
+			if generator.last_stats.loop_candidates > 0:
+				unlocked_double += 1
 			generator.max_loop_length = cap
 		if main_rooms != generator.main_path_length:
 			wrong_main_length += 1
@@ -293,7 +377,7 @@ func _batch(generator: DungeonGenerator, count: int, summary_lines: int) -> void
 			too_deep += 1
 		if treasure > generator.max_treasure_per_floor:
 			too_much_treasure += 1
-		if rooms > generator.target_rooms:
+		if rooms > generator.max_rooms:
 			too_many_rooms += 1
 		rooms_sum += rooms
 		deepest_sum += deepest
@@ -305,26 +389,49 @@ func _batch(generator: DungeonGenerator, count: int, summary_lines: int) -> void
 			floors_with_loops += 1
 		area_sum += occupied.size()
 		span_sum += max_cell - min_cell + Vector2i.ONE
+	generator.verify_unplace = false
 	if count > summary_lines:
 		print("   (per-seed lines for the first %d seeds; pass a third argument for more)" % summary_lines)
 	var n: float = maxf(built, 1)
+	var halls: int = 0
+	var hall_pieces: int = 0
+	for pieces: int in hall_histogram:
+		halls += hall_histogram[pieces]
+		hall_pieces += pieces * hall_histogram[pieces]
 	_check(hard_failures == 0, "every seed reached an exit within %d restarts (%d failed)" % [generator.max_restarts, hard_failures])
 	_check(overlaps == 0, "no overlapping cells across %d layouts" % built)
 	_check(wrong_exit_depth == 0, "exit depth is exactly %d on every seed (%d wrong)" % [generator.main_path_length + 1, wrong_exit_depth])
 	_check(wrong_main_length == 0, "main path holds exactly %d rooms between START and EXIT (%d wrong)" % [generator.main_path_length, wrong_main_length])
+	_check(wrong_spine == 0, "the spine is exactly %d rooms, START and EXIT included (%d wrong)" % [generator.main_path_length + 2, wrong_spine])
+	_check(bad_branch_counts == 0, "each floor rolls %d-%d branches, starts no more than it rolled, each 1-%d rooms deep (%d floors wrong)" % [generator.branch_count_min, generator.branch_count_max, generator.max_branch_depth, bad_branch_counts])
+	_check(hit_max_rooms == 0, "max_rooms (%d) never stops the branch pass at the defaults (%d floors hit it)" % [generator.max_rooms, hit_max_rooms])
+	_check(attempts_most < generator.max_attempts, "max_attempts (%d) never binds: a floor spends %.0f placement tries on average, %d at most" % [generator.max_attempts, attempts_sum / n, attempts_most])
 	_check(too_deep == 0, "no branch deeper than %d rooms (%d seeds over)" % [generator.max_branch_depth, too_deep])
 	_check(too_much_treasure == 0, "never more than %d treasure rooms (%d seeds over)" % [generator.max_treasure_per_floor, too_much_treasure])
-	_check(too_many_rooms == 0, "never more than %d non-corridor rooms (%d seeds over)" % [generator.target_rooms, too_many_rooms])
-	_check(touching == 0, "every link is room <-> connector: no rooms touching rooms, no connectors touching connectors (%d bad links)" % touching)
+	_check(too_many_rooms == 0, "never more than %d rooms (max_rooms) (%d seeds over)" % [generator.max_rooms, too_many_rooms])
+	_check(rooms_on_rooms == 0 and dangling == 0, "every link is room <-> hall <-> room: no room hangs off a room, every hall piece leads on (%d rooms on rooms, %d dangling pieces)" % [rooms_on_rooms, dangling])
+	_check(bad_halls == 0, "every hall is 1-%d pieces (%d outside that)" % [generator.max_hall_pieces, bad_halls])
+	_check(unplace_leaks == 0 and unplace_checked == caps_to_check, "every failed link (%d, restarts' tries included) left the occupied cells, placements, counts and its door exactly as it found them (%d checked, %d changed)" % [caps_to_check, unplace_checked, unplace_leaks])
 	_check(too_long == 0 and bad_pieces == 0, "every loop bridge is 1x1 pieces, both doors used, at most %d cells (%d too long, %d bad pieces)" % [generator.max_loop_length, too_long, bad_pieces])
 	_check(too_close == 0, "every bridge joins rooms at least %d rooms apart before it (closest %d, %d too close)" % [generator.loop_min_separation, closest, too_close])
 	print("   first-try success: %.1f%%   restarts needed: %s" % [100.0 * first_try / count, _histogram_text(restart_histogram)])
-	print("   rooms (non-corridor): %.1f of %d per floor; %.1f branches, deepest %.1f rooms" % [rooms_sum / n, generator.target_rooms, branches_sum / n, deepest_sum / n])
+	print("   rooms (not connectors): %.1f per floor; branches: %.2f per floor of %.2f rolled, deepest %.1f rooms" % [rooms_sum / n, branches_got / n, branches_wanted / n, deepest_sum / n])
+	print("   door supply: %.1f%% of floors got fewer branches than they rolled (%.2f short on those floors), the spare doors on the main path ran out" % [100.0 * short_floors / n, float(shortfall) / maxi(short_floors, 1)])
+	print("   halls: %.1f per floor, %.2f pieces each; pieces per hall %s; %.1f%% needed an extend past their first 1-2 pieces" % [halls / n, float(hall_pieces) / maxi(halls, 1), _histogram_text(hall_histogram), 100.0 * halls_extended / maxi(halls, 1)])
+	print("   links: %.1f tried per floor; %.1f%% found no room and capped their door (%.1f%% of those had extended first)" % [links / n, 100.0 * capped / maxi(links, 1), 100.0 * capped_after_extend / maxi(capped, 1)])
+	print("   doors: %.2f per room; %.0f%% of room doors used, %.0f%% of all doors (connectors included); %.1f plugged doors per floor" % [float(room_doors) / maxi(rooms_sum, 1), 100.0 * room_doors_used / maxi(room_doors, 1), 100.0 * all_doors_used / maxi(all_doors, 1), plugs / n])
 	print("   treasure: %.2f per floor, %.0f%% of floors have none, %d of %d hang straight off the main path" % [treasure_sum / n, 100.0 * no_treasure / n, main_treasure, treasure_sum])
 	print("   treasure by depth (exit is %d): %s" % [generator.main_path_length + 1, _histogram_text(treasure_by_depth)])
-	print("   loops: %.2f per floor (%.0f%% of floors have one), from %.2f candidates per floor; bridge lengths: %s" % [loops_sum / n, 100.0 * floors_with_loops / n, candidates_sum / n, _histogram_text(bridge_lengths)])
-	print("   no candidate within %d cells on %.0f%% of floors; of those, %d would have one at %d cells, %d at 8" % [generator.max_loop_length, 100.0 * no_candidate / n, unlocked_at_5, generator.max_loop_length + 1, unlocked_at_8])
-	print("   per floor: %.1f plugged doors, %.2f of %.2f connectors dead-end into a plug" % [plugs / n, dead_end_corridors / n, corridors / n])
+	var bridge_count: int = 0
+	var bridge_cells_total: int = 0
+	for length: int in bridge_lengths:
+		bridge_count += bridge_lengths[length]
+		bridge_cells_total += length * bridge_lengths[length]
+	print("   loops: %.2f per floor (%.0f%% of floors have one); bridge lengths: %s, mean %.1f cells" % [loops_sum / n, 100.0 * floors_with_loops / n, _histogram_text(bridge_lengths), float(bridge_cells_total) / maxi(bridge_count, 1)])
+	print("   aimed branches: %.2f per floor (%d more rolled aimed but had no far door to aim at); %d closed a loop, %d gave up at max_branch_depth, %d ran into max_rooms, %d ended in a one-door room, %d found nothing that fit; %.1f pieces each before it ended" % [aimed / n, aimed_no_target, aimed_closed, aimed_gave_up, aimed_out_of_rooms, aimed_dead_end, aimed_blocked, float(aimed_pieces) / maxi(aimed, 1)])
+	print("   leftover loop pass: %.2f candidates per floor" % (candidates_sum / n))
+	print("   no candidate within %d cells on %.0f%% of floors; of those, %d would have one at %d cells, %d at %d" % [generator.max_loop_length, 100.0 * no_candidate / n, unlocked_one_more, generator.max_loop_length + 1, unlocked_double, generator.max_loop_length * 2])
+	print("   per floor: %.1f connector pieces in halls" % (corridors / n))
 	print("   main path: %.1f cells from START to EXIT inclusive (%.0f m of floor to walk through); EXIT sits %.1f cells (%.0f m) from START as the crow flies" % [main_cells_sum / n, main_cells_sum / n * Room.CELL_SIZE, exit_distance_sum / n, exit_distance_sum / n * Room.CELL_SIZE])
 	print("   size: %.0f cells occupied, bounding box %.1f x %.1f cells (%.0f x %.0f m)" % [area_sum / n, span_sum.x / n, span_sum.y / n, span_sum.x / n * Room.CELL_SIZE, span_sum.y / n * Room.CELL_SIZE])
 	if not example.is_empty():
@@ -383,74 +490,32 @@ func _steps(links: Dictionary[DungeonGenerator.Placement, Array], from: DungeonG
 	return 1 << 20
 
 
-## Same seed, same plan: every placement's template, position, turns, doors and flags match.
-## Share of floors with at least one loop (and loops per floor) for loop_min_separation 1/2/3 by
-## max_loop_length 4/5/6, everything else at its current value. The generator's settings are restored after.
-func _loop_table(generator: DungeonGenerator, seeds: int) -> void:
+## Share of floors with at least one loop, loops per floor and mean bridge length for
+## loop_min_separation 1/2/3 by max_loop_length 5 (step 8's cap) and 10, everything else at its
+## current value. The generator's settings are restored after.
+func _loop_grid(generator: DungeonGenerator, seeds: int) -> void:
 	var separation_was: int = generator.loop_min_separation
 	var cap_was: int = generator.max_loop_length
-	print("     separation | cap 4        | cap 5        | cap 6")
+	print("     separation | cap 5                    | cap 10")
 	for separation: int in [1, 2, 3]:
 		var cells: PackedStringArray = []
-		for cap: int in [4, 5, 6]:
+		for cap: int in [5, 10]:
 			generator.loop_min_separation = separation
 			generator.max_loop_length = cap
 			var with_loop: int = 0
 			var loops: int = 0
+			var bridge_cells: int = 0
 			for s: int in range(1, seeds + 1):
 				var bridges: Dictionary[int, bool] = {}
 				for placement: DungeonGenerator.Placement in _plan_with_restarts(generator, s):
 					if placement.loop:
 						bridges[placement.bridge_id] = true
+						bridge_cells += 1
 				loops += bridges.size()
 				if not bridges.is_empty():
 					with_loop += 1
-			cells.append("%3.0f%% (%.2f)" % [100.0 * with_loop / seeds, float(loops) / seeds])
+			cells.append("%3.0f%% (%.2f, len %.1f)" % [100.0 * with_loop / seeds, float(loops) / seeds, float(bridge_cells) / maxi(loops, 1)])
 		print("     >= %d        | %s" % [separation, " | ".join(cells)])
-	generator.loop_min_separation = separation_was
-	generator.max_loop_length = cap_was
-
-
-## The same floors at main_path_curl 0 / 0.5 / 1.0: how far the exit ends up from START, how long
-## the main path is, and the loop rate at cap 5 for separation 3 (and 2). Settings are restored after.
-func _curl_table(generator: DungeonGenerator, seeds: int) -> void:
-	var curl_was: float = generator.main_path_curl
-	var separation_was: int = generator.loop_min_separation
-	var cap_was: int = generator.max_loop_length
-	generator.max_loop_length = 5
-	print("     curl | exit from START | main path   | first try | loops, sep 3 cap 5 | loops, sep 2 cap 5")
-	for curl: float in [0.0, 0.5, 1.0]:
-		generator.main_path_curl = curl
-		var columns: PackedStringArray = []
-		for separation: int in [3, 2]:
-			generator.loop_min_separation = separation
-			var exit_distance: float = 0.0
-			var main_cells: int = 0
-			var first_try: int = 0
-			var with_loop: int = 0
-			var loops: int = 0
-			for s: int in range(1, seeds + 1):
-				if not generator.plan_layout(s).is_empty():
-					first_try += 1
-				var plan: Array[DungeonGenerator.Placement] = _plan_with_restarts(generator, s)
-				var bridges: Dictionary[int, bool] = {}
-				for placement: DungeonGenerator.Placement in plan:
-					if placement.loop:
-						bridges[placement.bridge_id] = true
-					elif placement.main_path:
-						main_cells += placement.cells().size()
-						if placement.template.type == Room.Type.EXIT:
-							exit_distance += _center(placement).distance_to(_center(plan[0]))
-				loops += bridges.size()
-				if not bridges.is_empty():
-					with_loop += 1
-			if separation == 3:
-				columns.append("%4.1f cells (%3.0f m)" % [exit_distance / seeds, exit_distance / seeds * Room.CELL_SIZE])
-				columns.append("%5.1f cells" % (float(main_cells) / seeds))
-				columns.append("%7.0f%%" % (100.0 * first_try / seeds))
-			columns.append("%9.0f%% (%.2f)" % [100.0 * with_loop / seeds, float(loops) / seeds])
-		print("     %.1f  | %s" % [curl, " | ".join(columns)])
-	generator.main_path_curl = curl_was
 	generator.loop_min_separation = separation_was
 	generator.max_loop_length = cap_was
 
@@ -470,6 +535,7 @@ func _plan_with_restarts(generator: DungeonGenerator, base: int) -> Array[Dungeo
 	return plan
 
 
+## Same seed, same plan: every placement's template, position, turns, doors and flags match.
 func _test_same_plan(generator: DungeonGenerator) -> void:
 	var differing: int = 0
 	for s: int in range(1, 101):
@@ -601,8 +667,8 @@ func _test_builds(main: Node, generator: DungeonGenerator, count: int) -> void:
 	var seeds: Array[int] = []
 	for i: int in count:
 		seeds.append(1000 + i)
-	# Loops are rare, so add a few seeds known to have one, at least one with a corner piece:
-	# the bridge pieces' doors need checking too.
+	# Add a few seeds known to have a loop, at least one with a corner piece: the bridge pieces'
+	# doors need checking too.
 	var with_loops: int = 0
 	var corner_seen: bool = false
 	var probe: int = 1
