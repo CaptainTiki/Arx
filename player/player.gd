@@ -6,7 +6,8 @@ extends CharacterBody3D
 @export var starting_weapon: WeaponData
 ## Pooled hit/block particles in the level (Main/FX). Optional, so Player.tscn still runs on its own.
 @export var fx: FxPool
-## Noise goes through here (Dungeon.emit_noise). Optional; without it the player makes no noise.
+## Noise goes through here (Dungeon.emit_noise), and the map reads where you are from it.
+## Optional; without it the player makes no noise and the map stays blank.
 @export var dungeon: Dungeon
 
 @export_group("Noise")
@@ -99,6 +100,7 @@ func _ready() -> void:
 	_health.died.connect(_on_died)
 	_inventory.equip(starting_weapon)
 	_inventory_screen.bind(self)
+	_hud.bind_map(dungeon, self)
 
 
 func _process(delta: float) -> void:
@@ -119,8 +121,13 @@ func _physics_process(delta: float) -> void:
 	if not _dead:
 		_weapon_rig.update_combat(_intent.attack_pressed, _intent.block_held, delta)
 		_update_interact()
+	if _intent.map_pressed:
+		_hud.toggle_full_map()
 	_move(delta)
 	_tick_sprint_noise(delta)
+	if dungeon:
+		# The map reveals whatever room this lands in; Dungeon ignores repeats of the same cell.
+		dungeon.player_cell = dungeon.cell_at(global_position)
 
 
 func take_hit(hit: HitInfo) -> void:

@@ -1,6 +1,6 @@
 class_name Hud
 extends CanvasLayer
-## Player HUD: bars, crosshair, interact prompt, damage flash, death text.
+## Player HUD: bars, crosshair, interact prompt, damage flash, death text, corner map and full map.
 
 @export var damage_flash_alpha: float = 0.35
 @export var damage_flash_time: float = 0.35
@@ -17,6 +17,9 @@ extends CanvasLayer
 @onready var _damage_flash: ColorRect = %DamageFlash
 @onready var _death_label: Label = %DeathLabel
 @onready var _prompt_label: Label = %PromptLabel
+@onready var _minimap: Minimap = %Minimap
+@onready var _full_map: Control = %FullMap
+@onready var _full_map_view: Minimap = %FullMapView
 
 var _flash_tween: Tween
 var _notice_tween: Tween
@@ -24,6 +27,7 @@ var _prompt_text: String = ""
 var _prompt_wanted: bool = false
 var _notice_active: bool = false
 var _prompt_color: Color
+var _has_map: bool = false
 
 
 func _ready() -> void:
@@ -35,6 +39,26 @@ func bind(health: Health, stamina: Stamina) -> void:
 	stamina.changed.connect(_on_stamina_changed)
 	_on_health_changed(health.hp, health.max_hp)
 	_on_stamina_changed(stamina.current, stamina.max_stamina)
+
+
+## Both maps read the dungeon's reveal state and follow `player`. No dungeon = no corner map.
+func bind_map(dungeon: Dungeon, player: Node3D) -> void:
+	_minimap.bind(dungeon, player)
+	_full_map_view.bind(dungeon, player)
+	_has_map = dungeon != null
+	_minimap.visible = _has_map
+
+
+## M: the full map over a dim screen (the game keeps running), or back to the corner map.
+func toggle_full_map() -> void:
+	if not _has_map:
+		return
+	_full_map.visible = not _full_map.visible
+	_minimap.visible = not _full_map.visible
+
+
+func is_full_map_open() -> bool:
+	return _full_map.visible
 
 
 func flash_damage() -> void:

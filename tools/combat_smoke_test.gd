@@ -533,7 +533,7 @@ func _part_variants(main: Node) -> void:
 		swings += 1
 		await _seconds(sword.swing_time + 0.02)
 	var hits: int = (stun_hp - bruiser_health.hp) / sword.damage
-	_check(not left_early and hits >= 3, "stayed dazed through %d sword hits (%d swings)" % [hits, swings])
+	_check(not left_early and hits == 3, "stayed dazed through %d sword hits (%d swings, want 3)" % [hits, swings])
 	var recovered: bool = await _wait_until(func() -> bool: return bruiser.get_state_name() == "COOLDOWN", 1.0)
 	_check(recovered, "came out of the stun after %.1f s into COOLDOWN" % br.wall_stun_time)
 

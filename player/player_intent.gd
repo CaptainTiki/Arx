@@ -19,10 +19,13 @@ var restart_pressed: bool = false
 var regenerate_pressed: bool = false
 ## Debug: F6 rebuilds the dungeon with the same seed.
 var regenerate_same_pressed: bool = false
+## M went down since the last physics frame: open or close the full map.
+var map_pressed: bool = false
 
 var _look_accum: Vector2 = Vector2.ZERO
 var _regenerate_latched: bool = false
 var _regenerate_same_latched: bool = false
+var _map_latched: bool = false
 var _attack_latched: bool = false
 var _interact_latched: bool = false
 var _restart_latched: bool = false
@@ -79,6 +82,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_regenerate_latched = true
 	elif event.is_action_pressed(&"regenerate_same"):
 		_regenerate_same_latched = true
+	elif event.is_action_pressed(&"toggle_map"):
+		_map_latched = true
 
 
 func _process(_delta: float) -> void:
@@ -101,3 +106,5 @@ func _physics_process(_delta: float) -> void:
 	_regenerate_latched = false
 	regenerate_same_pressed = _regenerate_same_latched
 	_regenerate_same_latched = false
+	map_pressed = _map_latched
+	_map_latched = false

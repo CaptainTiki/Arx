@@ -21,6 +21,16 @@ const CUTTER_TOLERANCE: float = 0.5
 		footprint = value
 		update_configuration_warnings()
 
+@export_group("Placement Rules")
+## Fewest non-corridor rooms between START and this one (e.g. a boss room kept deep). 0 = anywhere.
+@export var min_depth_from_start: int = 0
+## Most copies of this room on one floor. 0 = unlimited.
+@export var max_per_floor: int = 0
+
+@export_group("Map")
+## Authored minimap art, drawn over the footprint (unrotated art, turned with the room). Null = plain cells.
+@export var map_tile: Texture2D
+
 ## Set by the generator on placement.
 var grid_origin: Vector2i
 ## Clockwise quarter turns applied on placement.
