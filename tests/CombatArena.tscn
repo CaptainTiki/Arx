@@ -13,6 +13,7 @@
 [ext_resource type="Resource" path="res://weapons/rusty_sword.tres" id="11_sword"]
 [ext_resource type="Resource" path="res://weapons/woodcutters_axe.tres" id="12_axe"]
 [ext_resource type="Resource" path="res://weapons/rusted_dagger.tres" id="13_dagger"]
+[ext_resource type="Script" path="res://dungeon/dungeon.gd" id="14_dungeon"]
 
 [sub_resource type="Environment" id="Environment_room"]
 background_mode = 1
@@ -63,6 +64,12 @@ material = ExtResource("2_wall")
 position = Vector3(-6.15, 2, 0)
 use_collision = true
 size = Vector3(0.3, 4, 12)
+material = ExtResource("2_wall")
+
+[node name="Pillar" type="CSGBox3D" parent="Room"]
+position = Vector3(3.5, 2, 1.5)
+use_collision = true
+size = Vector3(1.2, 4, 1.2)
 material = ExtResource("2_wall")
 
 [node name="TorchEastFar" parent="Room" instance=ExtResource("4_torch")]
@@ -122,12 +129,17 @@ position = Vector3(0, 0, 4.6)
 rotation = Vector3(0, 1.3963, 0)
 item = ExtResource("11_sword")
 
-[node name="Player" parent="." node_paths=PackedStringArray("fx", "drop_parent") instance=ExtResource("5_player")]
+[node name="Dungeon" type="Node3D" parent="."]
+script = ExtResource("14_dungeon")
+
+[node name="Player" parent="." node_paths=PackedStringArray("fx", "dungeon", "drop_parent") instance=ExtResource("5_player")]
 position = Vector3(0, 0, 3)
 fx = NodePath("../FX")
 pickup_scene = ExtResource("10_pickup")
+dungeon = NodePath("../Dungeon")
 drop_parent = NodePath("../Pickups")
 
-[node name="Enemy" parent="." node_paths=PackedStringArray("target") instance=ExtResource("6_enemy")]
+[node name="Enemy" parent="." node_paths=PackedStringArray("target", "dungeon") instance=ExtResource("6_enemy")]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -2)
 target = NodePath("../Player")
+dungeon = NodePath("../Dungeon")

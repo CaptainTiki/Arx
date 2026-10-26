@@ -8,6 +8,8 @@ extends CanvasLayer
 @export var prompt_format: String = "[E] %s"
 ## Tint for notices (e.g. "Inventory full") shown in the prompt line.
 @export var notice_color: Color = Color(0.878, 0.329, 0.149, 1.0)
+## Stamina bar tint while slowed (bruiser charge).
+@export var slowed_tint: Color = Color(0.55, 0.55, 0.6, 1.0)
 
 @onready var _health_bar: ProgressBar = %HealthBar
 @onready var _health_text: Label = %HealthText
@@ -69,6 +71,10 @@ func show_notice(text: String, duration: float) -> void:
 	_notice_tween = create_tween()
 	_notice_tween.tween_interval(duration)
 	_notice_tween.tween_callback(_end_notice)
+
+
+func set_slowed(slowed: bool) -> void:
+	_stamina_bar.modulate = slowed_tint if slowed else Color.WHITE
 
 
 func is_notice_showing() -> bool:

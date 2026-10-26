@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://fx/fx_pool.gd" id="7_fx"]
 [ext_resource type="PackedScene" path="res://fx/HitPuff.tscn" id="8_hit_puff"]
 [ext_resource type="PackedScene" path="res://fx/BlockSpark.tscn" id="9_block_spark"]
+[ext_resource type="Script" path="res://dungeon/dungeon.gd" id="10_dungeon"]
 
 [sub_resource type="Environment" id="Environment_dungeon"]
 background_mode = 1
@@ -28,6 +29,7 @@ script = ExtResource("1_main")
 environment = SubResource("Environment_dungeon")
 
 [node name="Dungeon" type="Node3D" parent="."]
+script = ExtResource("10_dungeon")
 
 [node name="Spawned" type="Node3D" parent="Dungeon"]
 
@@ -66,9 +68,10 @@ unique_name_in_owner = true
 
 [node name="BlockSpark4" parent="FX/BlockSparks" instance=ExtResource("9_block_spark")]
 
-[node name="Player" parent="." node_paths=PackedStringArray("fx", "drop_parent") instance=ExtResource("5_player")]
+[node name="Player" parent="." node_paths=PackedStringArray("fx", "dungeon", "drop_parent") instance=ExtResource("5_player")]
 unique_name_in_owner = true
 process_mode = 4
 fx = NodePath("../FX")
 pickup_scene = ExtResource("4_pickup")
+dungeon = NodePath("../Dungeon")
 drop_parent = NodePath("../Dungeon/Spawned")

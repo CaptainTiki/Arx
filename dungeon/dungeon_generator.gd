@@ -28,8 +28,8 @@ extends Node
 @export var max_restarts: int = 5
 
 @export_group("Scene")
-## Rooms are added here.
-@export var dungeon: Node3D
+## Rooms are added here. Also the noise hub every spawned enemy gets.
+@export var dungeon: Dungeon
 ## Enemies and pickups are added here. Must be a child of `dungeon`; it survives regeneration.
 @export var spawned: Node3D
 @export var player: Player
@@ -304,6 +304,7 @@ func _spawn(spawn: SpawnPoint, rng: RandomNumberGenerator) -> String:
 		if spawn.kind == SpawnPoint.Kind.ENEMY:
 			var rolled: Enemy = enemy_scene.instantiate() as Enemy
 			rolled.data = entry.enemy
+			rolled.dungeon = dungeon
 			rolled.transform = local
 			spawned.add_child(rolled)
 		else:
@@ -311,6 +312,8 @@ func _spawn(spawn: SpawnPoint, rng: RandomNumberGenerator) -> String:
 		return entry.describe(spawn.kind)
 	if spawn.kind == SpawnPoint.Kind.ENEMY:
 		var enemy: Node3D = spawn.fixed_scene.instantiate() as Node3D
+		if enemy is Enemy:
+			(enemy as Enemy).dungeon = dungeon
 		enemy.transform = local
 		spawned.add_child(enemy)
 		return "fixed %s" % spawn.fixed_scene.resource_path.get_file().get_basename()

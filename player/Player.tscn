@@ -16,6 +16,7 @@
 [ext_resource type="AudioStream" path="res://audio/sfx/player_hurt.wav" id="18_hurt"]
 [ext_resource type="Script" path="res://player/inventory.gd" id="19_inventory"]
 [ext_resource type="PackedScene" path="res://ui/InventoryScreen.tscn" id="20_inventory_screen"]
+[ext_resource type="Script" path="res://player/player_effects.gd" id="21_effects"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.35
@@ -265,6 +266,10 @@ script = ExtResource("4_stamina")
 [node name="Inventory" type="Node" parent="."]
 unique_name_in_owner = true
 script = ExtResource("19_inventory")
+
+[node name="Effects" type="Node" parent="."]
+unique_name_in_owner = true
+script = ExtResource("21_effects")
 
 [node name="Head" type="Node3D" parent="."]
 unique_name_in_owner = true

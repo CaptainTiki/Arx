@@ -4,10 +4,14 @@ extends SceneTree
 ## Part A: inventory and weapons. Pickups into the bag, Tab pause, every drop rule through the
 ## slots' own handlers, right-click shortcuts, drop to world and back, armour, full-bag reject,
 ## equip queued mid-swing, and a probe per weapon measuring the actual swing against its WeaponData.
+## Then, against a frozen grunt: damage per weapon, a point-blank swing, and a swing step that
+## glances off it and must stop rather than slide round.
 ## Part B (fresh scene): grunt behaviour. Data applied, lunge, block, windup turn cap, facing
-## lock, hit-and-back-off caught, early retreat escapes, punish to the kill.
-## Part C (fresh scene): variants. Bruiser hits for its damage and doesn't flinch; skitterer
-## outruns your walk and winds up in its 0.35 s.
+## lock, hit-and-back-off caught, early retreat escapes, a glancing lunge kept to its line, punish to the kill.
+## Part C (fresh scene): behaviors. Skitterer pounce (lands, blocked, bites point-blank); bruiser
+## charge (connects + slows, blocked, wall stun punished).
+## Part D (fresh scene): perception and noise. Cone, pillar LOS, lose sight -> SEARCH -> home,
+## sneak hit alerting a neighbour, walking silent vs sprinting heard.
 ## Run from the project root:
 ##   godot --headless --path . --script res://tools/combat_smoke_test.gd
 
@@ -46,6 +50,13 @@ func _run() -> void:
 	await _seconds(0.5)
 	await _part_variants(current_scene)
 
+	print("== reloading for part D")
+	reload_current_scene()
+	await process_frame
+	await process_frame
+	await _seconds(0.5)
+	await _part_perception(current_scene)
+
 	# Let in-flight SFX finish so the audio server releases them before shutdown.
 	await _seconds(1.0)
 	print("RESULT: %s (%d failures)" % ["PASS" if _failures == 0 else "FAIL", _failures])
@@ -72,6 +83,9 @@ func _part_inventory(main: Node) -> void:
 	var head_slot: EquipSlot = screen.get_node("Root/PaperDoll/HeadSlot") as EquipSlot
 	var chest_slot: EquipSlot = screen.get_node("Root/PaperDoll/ChestSlot") as EquipSlot
 	const WEAPON: ItemData.Slot = ItemData.Slot.WEAPON
+	# The grunt can see 12 m now; park it out of the way until the damage probes need it.
+	enemy.global_position = PARK_ENEMY
+	enemy.process_mode = Node.PROCESS_MODE_DISABLED
 
 	print("-- start: sword equipped, bag empty")
 	_check(inventory.get_equipped(WEAPON) == sword and rig.weapon == sword and inventory.bag.count(null) == Inventory.COLS * Inventory.ROWS,
@@ -79,7 +93,7 @@ func _part_inventory(main: Node) -> void:
 
 	print("-- E puts pickups in the bag")
 	_look_at_pickup(player, axe_pickup)
-	await _physics_frames(5)
+	await _wait_until(func() -> bool: return hud.prompt_text_shown() != "", 1.0)
 	_check(hud.prompt_text_shown() == "[E] Take Woodcutter's Axe", "prompt shows '%s'" % hud.prompt_text_shown())
 	Input.action_press(&"block")
 	await _physics_frames(3)
@@ -89,12 +103,12 @@ func _part_inventory(main: Node) -> void:
 	Input.action_release(&"block")
 	await _physics_frames(3)
 	_tap(&"interact")
-	await _physics_frames(3)
+	await _wait_until(func() -> bool: return not is_instance_valid(axe_pickup), 1.0)
 	_check(inventory.bag[0] == axe and not is_instance_valid(axe_pickup) and rig.weapon == sword, "axe went to square 0, pickup consumed, still holding the sword")
 	_look_at_pickup(player, dagger_pickup)
-	await _physics_frames(5)
+	await _wait_until(func() -> bool: return hud.prompt_text_shown() != "", 1.0)
 	_tap(&"interact")
-	await _physics_frames(3)
+	await _wait_until(func() -> bool: return not is_instance_valid(dagger_pickup), 1.0)
 	_check(inventory.bag[1] == dagger, "dagger went to square 1")
 
 	print("-- Tab opens a paused screen")
@@ -157,9 +171,9 @@ func _part_inventory(main: Node) -> void:
 	await _wait_until(func() -> bool: return not screen.is_open(), 1.0)
 	_check(not screen.is_open() and not paused, "Tab closes and unpauses")
 	_look_at_pickup(player, dropped)
-	await _physics_frames(5)
+	await _wait_until(func() -> bool: return hud.prompt_text_shown() != "", 1.0)
 	_tap(&"interact")
-	await _physics_frames(3)
+	await _wait_until(func() -> bool: return not is_instance_valid(dropped), 1.0)
 	var axe_square: int = inventory.bag.find(axe)
 	_check(not is_instance_valid(dropped) and axe_square >= 0, "picked the dropped axe back up (square %d)" % axe_square)
 	_bag(screen, axe_square).quick_action()
@@ -185,9 +199,9 @@ func _part_inventory(main: Node) -> void:
 		pass
 	_check(inventory.first_free_index() == -1 and not inventory.try_add(filler), "bag full at %d items" % (Inventory.COLS * Inventory.ROWS))
 	_look_at_pickup(player, sword_pickup)
-	await _physics_frames(5)
+	await _wait_until(func() -> bool: return hud.prompt_text_shown() != "", 1.0)
 	_tap(&"interact")
-	await _physics_frames(3)
+	await _wait_until(func() -> bool: return hud.is_notice_showing(), 1.0)
 	_check(is_instance_valid(sword_pickup) and sword_pickup.is_rejecting() and hud.prompt_text_shown() == "Inventory full",
 		"full bag: pickup stays, flips, prompt says '%s'" % hud.prompt_text_shown())
 	await _seconds(1.1)
@@ -223,18 +237,42 @@ func _part_inventory(main: Node) -> void:
 		await _probe_swing(player, rig, weapon)
 
 	print("-- per-weapon damage")
+	# Frozen so it can't strike back mid-probe; KEEP_ACTIVE leaves the body in the physics space to be hit.
+	enemy.disable_mode = CollisionObject3D.DISABLE_MODE_KEEP_ACTIVE
+	var enemy_health: Health = enemy.get_node("Health") as Health
 	for weapon: WeaponData in [sword, axe, dagger]:
-		enemy.global_position = PARK_ENEMY
-		player.global_position = Vector3(0.0, 0.0, 2.0)
 		await _equip_and_wait(inventory, rig, weapon)
 		_stage(player, enemy, 1.3)
-		var enemy_health: Health = enemy.get_node("Health") as Health
-		var hp_before: int = enemy_health.hp
+		await _physics_frames(2)
+		enemy_health.set_max_hp(enemy_health.max_hp)
 		rig.try_swing()
 		await _wait_until(func() -> bool: return rig.can_interact(), weapon.swing_time + 0.5)
-		var dealt: int = hp_before - enemy_health.hp
+		var dealt: int = enemy_health.max_hp - enemy_health.hp
 		_check(dealt == weapon.damage, "%s dealt %d (data %d) -> %d hits to kill a %d HP grunt"
 			% [weapon.display_name, dealt, weapon.damage, ceili(float(enemy.data.max_hp) / weapon.damage), enemy.data.max_hp])
+
+	print("-- point-blank: a grunt already touching you still takes the swing")
+	await _equip_and_wait(inventory, rig, sword)
+	_stage(player, enemy, 0.8)
+	await _physics_frames(2)
+	enemy_health.set_max_hp(enemy_health.max_hp)
+	rig.try_swing()
+	await _wait_until(func() -> bool: return rig.can_interact(), sword.swing_time + 0.5)
+	var pressed: int = enemy_health.max_hp - enemy_health.hp
+	_check(pressed == sword.damage, "swing from touching distance landed (-%d)" % pressed)
+
+	print("-- a swing step that glances off a grunt stops there instead of sliding round it")
+	await _equip_and_wait(inventory, rig, axe)
+	enemy.global_position = STAGE_ENEMY
+	# 0.4 m off its centre line: the step clips its capsule about halfway through.
+	player.place_at(Transform3D(Basis.IDENTITY, STAGE_ENEMY + Vector3(-0.4, 0.0, 1.1)))
+	await _physics_frames(2)
+	var step_from: Vector3 = player.global_position
+	rig.try_swing()
+	await _wait_until(func() -> bool: return rig.can_interact(), axe.swing_time + 0.5)
+	var sideways: float = absf(player.global_position.x - step_from.x)
+	_check(sideways < 0.08, "step kept to its line (%.2f m sideways, %.2f m forward)" % [sideways, step_from.z - player.global_position.z])
+	enemy.disable_mode = CollisionObject3D.DISABLE_MODE_REMOVE
 	enemy.global_position = PARK_ENEMY
 
 
@@ -288,10 +326,13 @@ func _part_grunt(main: Node) -> void:
 	_check(reached, "player reached the enemy (dist %.2f)" % _distance(player, enemy))
 	await _wait_until(func() -> bool: return enemy.get_state_name() == "STRIKE", 5.0)
 	var strike_start: Vector3 = enemy.global_position
+	# The lunge stops early if it reaches your body first.
+	var contact: float = ((enemy.get_node("BodyShape") as CollisionShape3D).shape as CapsuleShape3D).radius + ((player.get_node("CollisionShape3D") as CollisionShape3D).shape as CapsuleShape3D).radius
+	var expected_lunge: float = minf(data.strike_lunge, _distance(player, enemy) - contact)
 	var recovered: bool = await _wait_until(func() -> bool: return enemy.get_state_name() == "RECOVER", 2.0)
 	var lunged: float = _flat(enemy.global_position - strike_start).length()
 	_check(recovered, "enemy completed an attack")
-	_check(absf(lunged - data.strike_lunge) < 0.05, "strike lunged %.2f m (data %.2f)" % [lunged, data.strike_lunge])
+	_check(absf(lunged - expected_lunge) < 0.06, "strike lunged %.2f m (data %.2f, room to your body %.2f)" % [lunged, data.strike_lunge, expected_lunge])
 	_check(player_health.hp == 85, "unblocked strike dealt 15 (hp %d)" % player_health.hp)
 
 	print("-- blocked strike")
@@ -352,6 +393,20 @@ func _part_grunt(main: Node) -> void:
 	Input.action_release(&"move_back")
 	_check(player_health.hp == 70, "early retreat escaped (hp %d)" % player_health.hp)
 
+	print("-- a strike that glances off you stops there instead of sliding round your side")
+	await _wait_until(func() -> bool: return enemy.get_state_name() == "COOLDOWN", 2.0)
+	_stage(player, enemy, 1.6)
+	var striking: bool = await _wait_until(func() -> bool: return enemy.get_state_name() == "STRIKE", 3.0)
+	var lunge_from: Vector3 = enemy.global_position
+	var lunge_dir: Vector3 = _flat(-enemy.global_basis.z).normalized()
+	var lunge_side: Vector3 = lunge_dir.cross(Vector3.UP)
+	# 0.45 m off its line: the lunge clips your capsule with more than half of it still to go.
+	player.global_position = lunge_from + lunge_dir * 1.2 + lunge_side * 0.45
+	await _wait_until(func() -> bool: return enemy.get_state_name() == "RECOVER", 1.0)
+	var swerve: float = absf(_flat(enemy.global_position - lunge_from).dot(lunge_side))
+	_check(striking and swerve < 0.15, "glancing lunge kept to its line (%.2f m sideways, %.2f m along)"
+		% [swerve, _flat(enemy.global_position - lunge_from).dot(lunge_dir)])
+
 	print("-- punish")
 	player.global_position = enemy.global_position + enemy.global_basis.z * -1.4
 	player.rotation.y = enemy.rotation.y + PI
@@ -371,51 +426,210 @@ func _part_grunt(main: Node) -> void:
 
 func _part_variants(main: Node) -> void:
 	var player: Player = main.get_node("Player") as Player
-	var player_health: Health = player.get_node("Health") as Health
+	var player_health: Health = player.health
 	var sword: WeaponData = player.starting_weapon
 	(main.get_node("Enemy") as Node).queue_free()
 	await process_frame
 
-	print("-- bruiser: heavy hit, no flinch")
-	var bruiser: Enemy = await _spawn_variant(main, "res://enemy/bruiser.tres")
-	_stage(player, bruiser, 2.0)
-	var hp_before: int = player_health.hp
-	await _wait_until(func() -> bool: return bruiser.get_state_name() == "RECOVER", 4.0)
-	var taken: int = hp_before - player_health.hp
-	_check(taken == bruiser.data.damage, "bruiser strike dealt %d (data %d): dead in %d hits from full"
-		% [taken, bruiser.data.damage, ceili(float(player_health.max_hp) / bruiser.data.damage)])
-	var bruiser_health: Health = bruiser.get_node("Health") as Health
-	var bruiser_hp: int = bruiser_health.hp
-	_tap(&"attack")
-	await _seconds(0.35)
-	_check(bruiser_health.hp == bruiser_hp - sword.damage and bruiser.get_state_name() == "RECOVER",
-		"sword hit in RECOVER: -%d HP, still %s (no flinch)" % [bruiser_hp - bruiser_health.hp, bruiser.get_state_name()])
-	bruiser.queue_free()
-	await _seconds(0.5)
-
-	print("-- skitterer: outruns your walk, quick tell")
-	var skitterer: Enemy = await _spawn_variant(main, "res://enemy/skitterer.tres")
-	_stage(player, skitterer, 3.5)
-	await _wait_until(func() -> bool: return skitterer.get_state_name() == "CHASE", 1.0)
+	print("-- skitterer: chases faster than you walk, pounces from mid-range")
+	var skitterer: Enemy = await _spawn_enemy(main, "res://enemy/skitterer.tres", STAGE_ENEMY, PI)
+	var sk: EnemyData = skitterer.data
+	player.place_at(Transform3D(Basis.IDENTITY, STAGE_ENEMY + Vector3(0.0, 0.0, 8.0)))
+	var chased: bool = await _wait_until(func() -> bool: return skitterer.get_state_name() == "CHASE", 1.5)
 	await _physics_frames(2)
 	var gap_before: float = _distance(player, skitterer)
 	await _seconds(0.15)
 	var speed: float = (gap_before - _distance(player, skitterer)) / 0.15
-	_check(speed > player.walk_speed, "skitterer closes at %.1f m/s (you walk %.1f)" % [speed, player.walk_speed])
-	await _wait_until(func() -> bool: return skitterer.get_state_name() == "WINDUP", 2.0)
-	var windup_start: float = _now()
+	_check(chased and speed > player.walk_speed, "spotted you at 8 m, closes at %.1f m/s (you walk %.1f)" % [speed, player.walk_speed])
+	var hp_before: int = player_health.hp
+	var crouched: bool = await _wait_until(func() -> bool: return skitterer.get_state_name() == "CROUCH", 2.0)
+	var crouch_at: float = _now()
+	var crouch_gap: float = _distance(player, skitterer)
+	var squashed: float = (skitterer.get_node("Rig") as Node3D).scale.y / sk.body_scale
+	var pounced: bool = await _wait_until(func() -> bool: return skitterer.get_state_name() == "POUNCE", 1.0)
+	var crouch_time: float = _now() - crouch_at
+	await _physics_frames(1)
+	squashed = minf(squashed, 1.0)
+	_check(crouched and pounced and absf(crouch_time - sk.pounce_crouch_time) < TIME_TOLERANCE and crouch_gap < sk.pounce_range,
+		"crouched at %.1f m for %.2f s (data %.2f), then pounced" % [crouch_gap, crouch_time, sk.pounce_crouch_time])
+	var peak: float = 0.0
+	while skitterer.get_state_name() == "POUNCE":
+		peak = maxf(peak, skitterer.global_position.y)
+		await physics_frame
+	_check(skitterer.get_state_name() == "RECOVER" and hp_before - player_health.hp == sk.damage,
+		"landed on you: -%d HP (data %d), airborne up to %.2f m, then RECOVER" % [hp_before - player_health.hp, sk.damage, peak])
+
+	print("-- skitterer: a raised block eats the pounce")
+	await _wait_until(func() -> bool: return skitterer.get_state_name() == "COOLDOWN", 2.0)
+	_stage(player, skitterer, 3.5)
+	Input.action_press(&"block")
 	hp_before = player_health.hp
-	await _wait_until(func() -> bool: return skitterer.get_state_name() == "STRIKE", 1.0)
-	var windup: float = _now() - windup_start
-	_check(absf(windup - skitterer.data.windup_time) < TIME_TOLERANCE, "skitterer windup %.2f s (data %.2f)" % [windup, skitterer.data.windup_time])
-	await _wait_until(func() -> bool: return skitterer.get_state_name() == "RECOVER", 1.0)
-	_check(hp_before - player_health.hp == skitterer.data.damage, "skitterer strike dealt %d (data %d)" % [hp_before - player_health.hp, skitterer.data.damage])
+	await _wait_until(func() -> bool: return skitterer.get_state_name() == "POUNCE", 3.0)
+	var finished: bool = await _wait_until(func() -> bool: return skitterer.get_state_name() == "RECOVER", 2.5)
+	Input.action_release(&"block")
+	_check(finished and player_health.hp == hp_before, "blocked: no damage, and the pounce still finished its arc")
+
+	print("-- skitterer: point-blank it bites instead")
+	await _wait_until(func() -> bool: return skitterer.get_state_name() == "COOLDOWN", 2.0)
+	_stage(player, skitterer, 1.2)
+	hp_before = player_health.hp
+	await _wait_until(func() -> bool: return skitterer.get_state_name() in ["WINDUP", "CROUCH"], 3.0)
+	var opener: String = skitterer.get_state_name()
+	await _wait_until(func() -> bool: return skitterer.get_state_name() == "RECOVER", 1.5)
+	_check(opener == "WINDUP" and hp_before - player_health.hp == sk.damage, "at 1.2 m it opened with %s and bit for %d" % [opener, hp_before - player_health.hp])
+	skitterer.queue_free()
+	await _seconds(0.3)
+
+	print("-- bruiser: charge connects and slows you")
+	var bruiser: Enemy = await _spawn_enemy(main, "res://enemy/bruiser.tres", STAGE_ENEMY, PI)
+	var br: EnemyData = bruiser.data
+	player.place_at(Transform3D(Basis.IDENTITY, STAGE_ENEMY + Vector3(0.0, 0.0, 7.0)))
+	var winding: bool = await _wait_until(func() -> bool: return bruiser.get_state_name() == "CHARGE_WINDUP", 2.0)
+	var charging: bool = await _wait_until(func() -> bool: return bruiser.get_state_name() == "CHARGING", 1.5)
+	_check(winding and charging, "7 m away it roared, wound up and charged")
+	hp_before = player_health.hp
+	await _wait_until(func() -> bool: return bruiser.get_state_name() != "CHARGING", br.charge_max_time + 0.5)
+	await _physics_frames(1)
+	var walk_now: float = player._max_speed()
+	_check(bruiser.get_state_name() == "RECOVER" and hp_before - player_health.hp == br.damage,
+		"it hit you for %d (data %d) and stopped (%s)" % [hp_before - player_health.hp, br.damage, bruiser.get_state_name()])
+	_check(player.effects.is_slowed() and is_equal_approx(walk_now, player.walk_speed * br.charge_slow_mult),
+		"slowed to %.1f m/s (x%.1f)" % [walk_now, br.charge_slow_mult])
+	await _seconds(br.charge_slow_time + 0.1)
+	_check(not player.effects.is_slowed() and is_equal_approx(player._max_speed(), player.walk_speed), "slow wore off after %.1f s" % br.charge_slow_time)
+
+	print("-- bruiser: a blocked charge does nothing but still stops it")
+	await _wait_until(func() -> bool: return bruiser.get_state_name() == "COOLDOWN", 3.0)
+	_stage(player, bruiser, 7.0)
+	Input.action_press(&"block")
+	hp_before = player_health.hp
+	await _wait_until(func() -> bool: return bruiser.get_state_name() == "CHARGING", br.cooldown_time + 2.0)
+	await _wait_until(func() -> bool: return bruiser.get_state_name() != "CHARGING", br.charge_max_time + 0.5)
+	Input.action_release(&"block")
+	_check(bruiser.get_state_name() == "RECOVER" and player_health.hp == hp_before and not player.effects.is_slowed(),
+		"blocked: no damage, no slow, bruiser stopped (%s)" % bruiser.get_state_name())
+
+	print("-- bruiser: sidestep late, it hits the wall and stands there dazed")
+	await _wait_until(func() -> bool: return bruiser.get_state_name() == "COOLDOWN", 3.0)
+	bruiser.global_position = Vector3(0.0, 0.0, 1.5)
+	bruiser.rotation.y = 0.0
+	player.place_at(Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, 0.0, -4.5)))
+	await _wait_until(func() -> bool: return bruiser.get_state_name() == "CHARGING", br.cooldown_time + 2.0)
+	await _wait_until(func() -> bool: return _distance(player, bruiser) < 3.5, 2.0)
+	player.place_at(Transform3D(Basis(Vector3.UP, PI), Vector3(4.5, 0.0, -4.5)))
+	var stunned: bool = await _wait_until(func() -> bool: return bruiser.get_state_name() == "WALL_STUN", br.charge_max_time)
+	_check(stunned, "missed you and ran into the wall: WALL_STUN")
+	var bruiser_health: Health = bruiser.get_node("Health") as Health
+	var stun_hp: int = bruiser_health.hp
+	var stun_start: float = _now()
+	player.place_at(Transform3D(Basis(Vector3.UP, bruiser.rotation.y), bruiser.global_position + bruiser.global_basis.z * 1.5))
+	var swings: int = 0
+	var left_early: bool = false
+	while _now() - stun_start < br.wall_stun_time - 0.1:
+		if bruiser.get_state_name() != "WALL_STUN":
+			left_early = true
+			break
+		_tap(&"attack")
+		swings += 1
+		await _seconds(sword.swing_time + 0.02)
+	var hits: int = (stun_hp - bruiser_health.hp) / sword.damage
+	_check(not left_early and hits >= 3, "stayed dazed through %d sword hits (%d swings)" % [hits, swings])
+	var recovered: bool = await _wait_until(func() -> bool: return bruiser.get_state_name() == "COOLDOWN", 1.0)
+	_check(recovered, "came out of the stun after %.1f s into COOLDOWN" % br.wall_stun_time)
 
 
-func _spawn_variant(main: Node, data_path: String) -> Enemy:
+func _part_perception(main: Node) -> void:
+	var player: Player = main.get_node("Player") as Player
+	(main.get_node("Enemy") as Node).queue_free()
+	await process_frame
+	var grunt: String = "res://enemy/grunt.tres"
+
+	print("-- sight cone")
+	var watcher: Enemy = await _spawn_enemy(main, grunt, Vector3(0.0, 0.0, -1.0), 0.0)
+	var data: EnemyData = watcher.data
+	player.place_at(Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, 3.0)))
+	await _seconds(1.0)
+	_check(watcher.get_state_name() == "IDLE", "4 m behind it: still IDLE (looking around, never sees you)")
+	player.place_at(Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, -5.0)))
+	var seen_at: float = _now()
+	var alerted: bool = await _wait_until(func() -> bool: return watcher.get_state_name() == "ALERT", 0.5)
+	var react: float = _now() - seen_at
+	var chasing: bool = await _wait_until(func() -> bool: return watcher.get_state_name() == "CHASE", data.alert_time + 0.3)
+	_check(alerted and chasing, "4 m in front: ALERT after %.2f s, then CHASE" % react)
+
+	print("-- lose sight: SEARCH where you were, look around, walk home")
+	var home: Vector3 = watcher.global_position
+	var seen_spot: Vector3 = player.global_position
+	player.place_at(Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, 40.0)))
+	var lost_at: float = _now()
+	var searching: bool = await _wait_until(func() -> bool: return watcher.get_state_name() == "SEARCH", data.lose_sight_time + 1.0)
+	_check(searching and absf(_now() - lost_at - data.lose_sight_time) < 0.3, "gave up the chase after %.1f s (data %.1f): SEARCH" % [_now() - lost_at, data.lose_sight_time])
+	var closest: float = INF
+	var idle_again: bool = false
+	var deadline: float = _now() + 12.0
+	while _now() < deadline:
+		closest = minf(closest, _flat(watcher.global_position - seen_spot).length())
+		if watcher.get_state_name() == "IDLE":
+			idle_again = true
+			break
+		await physics_frame
+	_check(closest < data.search_arrive_distance + 0.2, "walked to where it last saw you (got within %.2f m)" % closest)
+	_check(idle_again and _flat(watcher.global_position - home).length() < data.search_arrive_distance + 0.2,
+		"then went home to IDLE (%.2f m from its spot)" % _flat(watcher.global_position - home).length())
+	watcher.queue_free()
+
+	print("-- a pillar blocks line of sight")
+	var pillar_watcher: Enemy = await _spawn_enemy(main, grunt, Vector3(3.5, 0.0, -3.0), PI)
+	player.place_at(Transform3D(Basis.IDENTITY, Vector3(3.5, 0.0, 4.0)))
+	await _seconds(0.8)
+	_check(pillar_watcher.get_state_name() == "IDLE", "straight ahead but behind the pillar: unseen")
+	player.place_at(Transform3D(Basis.IDENTITY, Vector3(1.0, 0.0, 4.0)))
+	var spotted: bool = await _wait_until(func() -> bool: return pillar_watcher.get_state_name() == "ALERT", 0.6)
+	_check(spotted, "step out from behind it: spotted")
+	pillar_watcher.queue_free()
+
+	print("-- sneak up and hit one: the other hears it")
+	var victim: Enemy = await _spawn_enemy(main, grunt, Vector3(-1.5, 0.0, -1.0), 0.0)
+	var neighbour: Enemy = await _spawn_enemy(main, grunt, Vector3(2.5, 0.0, -3.0), 0.0)
+	player.place_at(Transform3D(Basis.IDENTITY, Vector3(-1.5, 0.0, 0.3)))
+	await _seconds(0.6)
+	_check(victim.get_state_name() == "IDLE" and neighbour.get_state_name() == "IDLE", "walked up behind both: neither noticed")
+	var victim_health: Health = victim.get_node("Health") as Health
+	_tap(&"attack")
+	var heard: bool = await _wait_until(func() -> bool: return neighbour.get_state_name() != "IDLE", 0.8)
+	_check(victim_health.hp == victim_health.max_hp - player.starting_weapon.damage and victim.is_aware(),
+		"sneak hit landed (hp %d) and woke it (%s)" % [victim_health.hp, victim.get_state_name()])
+	_check(heard and neighbour.get_state_name() == "ALERT", "the other one heard the fight (%s)" % neighbour.get_state_name())
+	var came: bool = await _wait_until(func() -> bool: return neighbour.get_state_name() == "CHASE", 1.5)
+	_check(came, "turned toward the noise, saw you, CHASE")
+	victim.queue_free()
+	neighbour.queue_free()
+	await _seconds(0.3)
+
+	print("-- walking is silent, sprinting isn't")
+	var listener: Enemy = await _spawn_enemy(main, grunt, Vector3(0.0, 0.0, -3.0), 0.0)
+	player.place_at(Transform3D(Basis.IDENTITY, Vector3(-2.0, 0.0, 0.5)))
+	await _seconds(0.3)
+	Input.action_press(&"move_right")
+	await _seconds(0.8)
+	Input.action_release(&"move_right")
+	await _seconds(0.3)
+	_check(listener.get_state_name() == "IDLE", "walked past 3.5-4 m behind it: nothing")
+	Input.action_press(&"sprint")
+	Input.action_press(&"move_left")
+	var noticed: bool = await _wait_until(func() -> bool: return listener.get_state_name() != "IDLE", 1.2)
+	Input.action_release(&"move_left")
+	Input.action_release(&"sprint")
+	_check(noticed, "sprinted past on the same line: it heard you (%s)" % listener.get_state_name())
+
+
+## A fresh enemy of `data_path` at `at`, facing `yaw`, wired to the arena's Dungeon for noise.
+func _spawn_enemy(main: Node, data_path: String, at: Vector3, yaw: float) -> Enemy:
 	var enemy: Enemy = (load("res://enemy/Enemy.tscn") as PackedScene).instantiate() as Enemy
 	enemy.data = load(data_path) as EnemyData
-	enemy.position = PARK_ENEMY
+	enemy.position = at
+	enemy.rotation.y = yaw
+	enemy.dungeon = main.get_node("Dungeon") as Dungeon
 	main.add_child(enemy)
 	await process_frame
 	return enemy
@@ -445,8 +659,8 @@ func _look_at_pickup(player: Player, pickup: Node3D) -> void:
 func _stage(player: Player, enemy: Enemy, gap: float) -> void:
 	enemy.global_position = STAGE_ENEMY
 	enemy.rotation.y = PI
-	player.global_position = STAGE_ENEMY + Vector3(0.0, 0.0, gap)
-	player.rotation.y = 0.0
+	# place_at also levels the view: an earlier step may have left you looking at the floor.
+	player.place_at(Transform3D(Basis.IDENTITY, STAGE_ENEMY + Vector3(0.0, 0.0, gap)))
 
 
 func _aim_at(player: Player, point: Vector3) -> void:

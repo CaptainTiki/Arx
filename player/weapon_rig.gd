@@ -61,6 +61,8 @@ var _state: State = State.IDLE
 var _pending_weapon: WeaponData
 ## Separate flag because a pending null (unequip to fists) is a real request.
 var _has_pending: bool = false
+## Whether the current swing connected; a swing that ends without a hit makes whiff noise.
+var _landed_this_swing: bool = false
 var _hitbox_back_z: float = 0.0
 var _swing_speed: float = 1.0
 var _attack_buffer_left: float = 0.0
@@ -145,6 +147,7 @@ func try_swing() -> bool:
 		return false
 	_state = State.SWING
 	_anim.play(&"swing", 0.05, _swing_speed)
+	_landed_this_swing = false
 	_whoosh_sfx.play()
 	# The step lands mid-active-window for every weapon, so it carries the body into the hit.
 	_player.apply_lunge(weapon.lunge_distance, (weapon.active_start + weapon.active_end) * 0.5)
@@ -185,8 +188,10 @@ func _on_hit_landed(target: Node3D) -> void:
 	var hit: HitInfo = HitInfo.new(weapon.damage, _player, to_target.normalized(), true)
 	var contact: Vector3 = _hitbox.overlap_point(target)
 	target.call(&"take_hit", hit)
+	_landed_this_swing = true
 	_whoosh_sfx.stop()
 	_impact_sfx.play()
+	_player.make_noise(_player.noise_sword_hit)
 	if _player.fx:
 		_player.fx.play_hit_puff(contact, hit.direction)
 	kick(hit_kick_deg)
@@ -196,6 +201,8 @@ func _on_hit_landed(target: Node3D) -> void:
 func _on_animation_finished(anim_name: StringName) -> void:
 	if anim_name == &"swing":
 		_hitbox.end_swing()
+		if not _landed_this_swing:
+			_player.make_noise(_player.noise_whiff)
 		_become_idle()
 	elif anim_name == &"equip":
 		_become_idle()

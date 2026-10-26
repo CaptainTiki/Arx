@@ -1,4 +1,4 @@
-# Steps 1–5 — Swing & Block, Pickups, Generated Dungeon, Spawn Tables, Inventory
+# Steps 1–6 — Swing & Block, Pickups, Generated Dungeon, Spawn Tables, Inventory, Enemy Perception
 
 Open in Godot 4.7, press F5. Main scene: `res://main/Main.tscn`. The step-1 room lives on as `res://tests/CombatArena.tscn`, the fixture for the combat smoke test; you can also open it and F6 it to fight one grunt in a known room.
 
@@ -6,7 +6,109 @@ Open in Godot 4.7, press F5. Main scene: `res://main/Main.tscn`. The step-1 room
 
 Every Play builds a different floor of about 10 hand-built rooms, from a start room to a glowing exit pad. You start holding the Rusty Sword with an empty bag. Combat and treasure rooms roll what's in them from spawn tables. The output log prints `Dungeon seed N`, followed by one line per spawn point (`room 4 (CombatRoom_B) spawn 1 → skitterer`). Put N in `DungeonGenerator.seed_value`, or press F6, to get that exact floor and those exact spawns again. F5 builds a new one. Look at an item within 2.5 m and press E to put it in your bag; Tab opens the inventory to wear it.
 
-Enemies wake up when you get within 4 m. Each walks in, rears back with a red flash and a grunt (its windup, turning at most its turn rate to follow you), then lunges into the strike. After that it stands still, without turning, through recovery and cooldown. There are three kinds; see Step 4.
+Enemies stand watch, sweeping their gaze, until they **see** you (12 m, a 110° cone, a clear line to your head) or **hear** you (a fight, a block, a sprint, a dropped item). Then they bark, turn, and come for you, or go and look if they only heard something. Lose them for 3 s and they search where they last saw you, then walk home. Grunts walk in, rear back with a red flash (the windup, turning at most their turn rate to follow you) and lunge into the strike. Skitterers crouch and leap at you from mid-range. Bruisers roar and charge from afar; sidestep one into a wall and it stands there dazed. After any attack the enemy stands still, without turning, through recovery and cooldown. See Steps 4 and 6.
+
+---
+
+## Step 6: enemy v2 — perception, behaviours, noise
+
+### States
+
+All of this lives in the one `enemy/enemy.gd`. The opener an enemy picks is a `match data.behavior` in `_try_attack()`.
+
+- **IDLE**: stands at its spawn, sweeping its facing ±`idle_look_angle` (40°) over `idle_look_period` (4 s). Each spawn spot gets its own phase, so neighbours don't sweep in lockstep.
+  - → **ALERT** when it sees you or hears a noise.
+  - When hit: → **FLINCH** if it can flinch (grunt, skitterer), otherwise → **ALERT** (bruiser).
+- **ALERT** (`alert_time` 0.4 s): barks and turns toward `last_known_pos` at the chase turn rate.
+  - → **CHASE** if it can see you, or if a hit woke it.
+  - → **SEARCH** otherwise (it only heard something).
+- **CHASE**: walks at you while it can see you, and at `last_known_pos` while it can't.
+  - → **SEARCH** after `lose_sight_time` (3 s) without seeing you.
+  - In range: → the opener for its behaviour (below).
+- **SEARCH**: three legs, each with a `search_give_up_time` (6 s) limit:
+  - GOTO: walks to `last_known_pos` at `search_speed_mult` (0.6) × move speed.
+  - LOOK: looks around for `search_look_time` (2 s).
+  - RETURN: walks home, then → **IDLE** facing its old way.
+  - Sees you at any point: bark, → **CHASE**. Hears a noise: → **ALERT** toward it.
+- **MELEE opener** (grunt, and every type at close range): within `trigger_range`, **WINDUP** (capped turn) → **STRIKE** (facing locked, lunge) → **RECOVER** → **COOLDOWN** → **CHASE**.
+- **POUNCE opener** (skitterer, between `pounce_min_range` 2 m and `pounce_range` 5 m): **CROUCH** (`pounce_crouch_time` 0.4 s). It squashes to `pounce_squash` (0.6) height, the TellFlash lights, it chitters, and it tracks you at the windup turn rate. The landing spot locks when the crouch ends.
+  - → **POUNCE**: a ballistic leap with the hitbox live for the whole flight, so you can block it.
+  - → **RECOVER** on landing (or after 2 s) → **COOLDOWN**. Under 2 m it bites with a normal WINDUP instead.
+- **CHARGE opener** (bruiser, beyond `charge_min_range` 4 m): **CHARGE_WINDUP** (`charge_windup` 0.6 s). It roars (a 12 m noise), holds the TellFlash and turns at the chase rate. Then **CHARGING**: `charge_speed` 7 m/s, turning at `charge_turn_rate` 60°/s, with a `charge_hit_reach` 1.3 m hitbox. A charge ends one of three ways:
+  - **Hits you:** 35 damage, `player.effects.apply_slow(0.5, 1.5)`, → **RECOVER**. Blocked: no damage and no slow, but it still stops, → **RECOVER**.
+  - **Hits a wall head-on** (`charge_wall_dot` 0.5): → **WALL_STUN** (`wall_stun_time` 2 s) → **COOLDOWN**.
+  - **`charge_max_time` (2.5 s) runs out:** → **RECOVER**.
+- **FLINCH** (0.3 s): from a hit outside an attack, if `can_flinch`. Then → **COOLDOWN** if cooldown time is left, otherwise → **CHASE**.
+- **WALL_STUN**: counts as `can_flinch` for every type. Each hit plays the flinch and knocks it back, but the stun runs its full 2 s.
+- **Super armour** in WINDUP, STRIKE, CROUCH, POUNCE, CHARGE_WINDUP and CHARGING: a hit there is a trade, not an interrupt.
+- **DEAD**: leaves the `enemies` group, so noise no longer reaches it.
+
+### Perception — `enemy/perception.gd` (`Perception`, a node at eye height in `Enemy.tscn`)
+
+Each look is a range check, then the cone, then one `SightRay` (masks world + player) to `Player.eye_position()`, which must hit the player. Enemies look on 1 physics frame in 4, each on its own phase, so a full room never raycasts on the same tick. Reaction time is therefore up to 4 frames: the smoke test measures ALERT 0.03–0.07 s after you step into view. The node's height scales with `body_scale`.
+
+| `EnemyData` → Perception | grunt | skitterer | bruiser | Notes |
+|---|---|---|---|---|
+| `sight_range` | 12 m | 12 m | 12 m | |
+| `sight_fov` | 110° | 110° | 110° | Full cone |
+| `lose_sight_time` | 3 s | 3 s | 3 s | CHASE → SEARCH |
+| `hearing` | 1.0 | 1.0 | 1.0 | Multiplies every noise radius it hears |
+| `aware_sense_range` | 2.5 m | 2.5 m | 2.5 m | Once aware, it senses you outside its cone this close (still needs line of sight). Not in the handoff; see Decisions. |
+| `alert_time` | 0.4 s | 0.4 s | 0.4 s | |
+| `idle_look_angle` / `idle_look_period` | 40° / 4 s | 40° / 4 s | 40° / 4 s | |
+| `search_speed_mult` / `search_look_time` | 0.6 / 2 s | 0.6 / 2 s | 0.6 / 2 s | |
+| `search_arrive_distance` / `search_give_up_time` | 0.6 m / 6 s | 0.6 m / 6 s | 0.6 m / 6 s | Give-up is per leg, because there's no pathfinding (see Known limitations) |
+
+No variant overrides perception yet; they all use the `EnemyData` defaults. If you want a difference, the obvious first candidates are a skitterer `hearing` of 1.5 and a bruiser `sight_fov` of 90.
+
+### Behaviour — `EnemyData` → Behavior
+
+| | grunt | skitterer | bruiser |
+|---|---|---|---|
+| `behavior` | MELEE | POUNCE | CHARGE |
+| `strike_lunge` | **1.4** (was 0.9) | 1.3 | 0.6 |
+| `voice_pitch` | 1.0 | 1.5 | 0.65 |
+
+| Pounce (skitterer) | Value | | Charge (bruiser) | Value |
+|---|---|---|---|---|
+| `pounce_crouch_time` | 0.4 s | | `charge_min_range` | 4 m |
+| `pounce_range` | 5 m | | `charge_windup` | 0.6 s |
+| `pounce_min_range` | 2 m | | `charge_speed` | 7 m/s |
+| `pounce_speed` | 9 m/s horizontal | | `charge_turn_rate` | 60 °/s |
+| `pounce_arc` | 1.2 m peak | | `charge_max_time` | 2.5 s |
+| `pounce_squash` | 0.6 | | `charge_hit_reach` | 1.3 m (restored to `attack_reach` afterwards) |
+| | | | `charge_slow_mult` / `charge_slow_time` | 0.5 / 1.5 s |
+| | | | `charge_wall_dot` | 0.5 |
+| | | | `wall_stun_time` | 2 s |
+
+`voice_pitch` (not in the handoff) pitches the grunt, bark and death sounds, so you can hear which kind spotted you. The skitterer's crouch has its own chitter and the bruiser's charge its own roar (`audio/sfx/enemy_chitter.wav`, `enemy_roar.wav`, `enemy_bark.wav`, all from the asset generator).
+
+**Measured by the smoke test:**
+- **Pounce:** crouched at 5.0 m for 0.41 s, peaked at 1.24 m, landed on you for 8, then RECOVER. A block eats it.
+- **Charge:** from 7 m it roared and charged, hit for 35 and slowed you to 2.5 m/s, which wore off after 1.5 s. Blocked, it stopped with no damage and no slow. Sidestepped into a wall, it stayed dazed through 4 sword hits and came out after 2.0 s.
+
+### Noise — `dungeon/dungeon.gd` (`Dungeon.emit_noise(pos, radius)`)
+
+Every living enemy in the `enemies` group within `radius × its hearing` gets `hear(pos)`. Only IDLE and SEARCH enemies react: they go ALERT with `last_known_pos = pos`, investigate, and chase only once they actually see you. ALERT, CHASE and attacking enemies ignore noise. There's no occlusion, so noise carries through walls into the next room.
+
+| Noise | Radius | Where it lives |
+|---|---|---|
+| Your hit lands (any weapon) | 9 m | `Player.noise_sword_hit`, made in `WeaponRig._on_hit_landed` |
+| You block a hit | 9 m | `Player.noise_block` |
+| An enemy takes a hit (its grunt) | 7 m | `EnemyData.hurt_noise_radius`, per variant |
+| Your swing whiffs | 3 m | `Player.noise_whiff`, at swing end if nothing was hit |
+| Sprint footstep | 5 m every 0.3 s | `Player.noise_sprint_step`, `sprint_step_interval`. Only while actually moving faster than walk speed. |
+| Walking | 0 | Silent; nothing is emitted |
+| Dropping an item | 4 m | `Player.noise_drop` |
+| Bruiser roar (charge windup) | 12 m | `EnemyData.roar_noise_radius` |
+
+A landed hit makes two noises: yours (9 m) and the victim's grunt (7 m, made after its own state change so it doesn't hear itself). `Player.dungeon` and `Enemy.dungeon` are the references: `Main.tscn` wires the player's, and the generator hands its own `dungeon` to every enemy it spawns. Leave it empty and that body is silent.
+
+**Measured:** sneaking up behind two grunts woke neither. Hitting one alerted the other, which turned toward the fight, saw you, and chased. Walking past 3.5–4 m behind one: nothing. Sprinting past on the same line: heard.
+
+### PlayerEffects — `player/player_effects.gd` (`Player.tscn → Effects`)
+
+A deliberately minimal stub with one effect. `apply_slow(mult, duration)` keeps the stronger slow and refreshes the time, and `speed_mult` feeds `Player._max_speed()`. While you're slowed, the HUD tints the stamina bar grey (`Hud.slowed_tint`). Reach it with `player.effects`.
 
 ---
 
@@ -95,12 +197,12 @@ A row's `enemy` is read by ENEMY points and its `item` by WEAPON points; a row w
 | `strike_time` | 0.2 | 0.15 | 0.3 |
 | `recover_time` | 0.8 | 0.4 | 1.2 |
 | `cooldown_time` | 1.5 | 0.6 | 2.0 |
-| `strike_lunge` | 0.9 | 1.3 | 0.6 |
+| `strike_lunge` | 1.4 (0.9 before step 6) | 1.3 | 0.6 |
 | `windup_turn_rate` | 180 | 360 | 90 |
 | `body_scale` | 1.0 | 0.7 | 1.4 |
 | `body_material` | (scene burlap) | `hide_skitterer.tres`, pale bone `c9c0b9` | `hide_bruiser.tres`, blood red `84191c` |
 
-`body_scale` sizes the whole visual `Rig`, legs included, plus the collision capsule, HP bar height and tell light. Scaling only the `Body` node in this scene would leave the legs grunt-sized. `body_material` goes on torso and arms as a `material_override`; the hit-flash overlay still works on top. Everything else uses the grunt's defaults (aggro 4 m, chase turn 460°/s, flinch 0.3 s, and so on).
+`body_scale` sizes the whole visual `Rig`, legs included, plus the collision capsule, HP bar height and tell light. Scaling only the `Body` node in this scene would leave the legs grunt-sized. `body_material` goes on torso and arms as a `material_override`; the hit-flash overlay still works on top. Everything else uses the grunt's defaults (chase turn 460°/s, flinch 0.3 s, and so on). Step 6 added each variant's behaviour, perception and voice; see there.
 
 **Tuning order from the handoff:**
 - **Skitterer:** a nuisance means raise `damage`; unfair means raise `windup_time` before touching anything else.
@@ -235,7 +337,7 @@ All of these live in `enemy/grunt.tres` (`EnemyData`) unless noted.
 | `can_flinch` | true | Lets heavy types (bruisers) ignore stagger. They still take damage and flash. | Off, every hit outside RECOVER/COOLDOWN is a trade, and the punish window is the only safe damage. |
 | `trigger_range` | 1.8 m | Distance at which it commits to WINDUP. | Above about 1.9 it swings from outside your sword reach (1.55 m + its 0.4 m body), so you can never answer a windup. Too low and it walks into your face first. |
 | `attack_reach` | 2.3 m | Hitbox length forward from its center (resized on ready). Longer than `trigger_range`, so one step back doesn't dodge. | Much longer and hits land when the club is visibly nowhere near you. Below `trigger_range` + 0.35 it whiffs against a player standing still. |
-| `strike_lunge` | 0.9 m | **Fixes hit-and-back-off.** Reach plus lunge covers about 3.2 m from where it stood, so a player retreating at walk speed has to start roughly 0.25 s before the strike to escape. The smoke test checks both the caught case and the escape case. | It skates across the room and ends every strike in your face, which makes the viewmodel clip into it. 0 brings back the backpedal cheese. |
+| `strike_lunge` | 0.9 m (1.4 since step 6) | **Fixes hit-and-back-off.** Reach plus lunge covered about 3.2 m from where it stood at 0.9 (3.7 m at 1.4), so a retreating player has to start backing off early to escape. The smoke test checks both the caught case and the escape case. Since step 6 the lunge ends when it touches you. | It skates across the room and ends every strike in your face, which makes the viewmodel clip into it. 0 brings back the backpedal cheese. |
 | `windup_turn_rate` | 180 °/s | Capped tracking during WINDUP, about 126° over the full tell. A strafe gets partly behind it; a full sprint-circle doesn't. | High and it tracks perfectly, so block is the only defense. Low and circle-strafing trivializes it. |
 | `cooldown_time` | 1.5 s | Now a true standstill after RECOVER: no movement, no turning. It used to chase and track during cooldown. | Long gives free kills. Short leaves RECOVER as the only window, and attacks chain back to back. |
 | `chase_turn_rate` | 460 °/s | Was `turn_speed` (8 rad/s). Same behavior, now in deg/s like the windup rate. | Low and you can walk around it while it chases. |
@@ -270,9 +372,8 @@ See **Step 2: weapons** above for every per-weapon field.
 | | `strike_time` | 0.2 s | Hitbox open for roughly 10%–90% of it (method keys in the `strike` anim) |
 | | `recover_time` | 0.8 s | Punish window |
 | | `cooldown_time` | 1.5 s | Starts when RECOVER ends or a flinch interrupts it |
-| | `strike_lunge` | 0.9 m | Ease-out over `strike_time` along the facing locked at STRIKE start |
-| Tracking | `aggro_range` | 4.0 m | Spawns 5 m away, so you walk up to it |
-| | `chase_turn_rate` | 460 °/s | |
+| | `strike_lunge` | 1.4 m | Ease-out over `strike_time` along the facing locked at STRIKE start. Walls stop it, and touching you ends it. |
+| Tracking | `chase_turn_rate` | 460 °/s | Also ALERT, SEARCH and CHARGE_WINDUP turns |
 | | `windup_turn_rate` | 180 °/s | Facing locks at STRIKE start, through RECOVER and COOLDOWN |
 | | `tell_flash_time` | 0.15 s | TellFlash light on at windup start |
 | Reactions | `flinch_time` | 0.3 s | Only from IDLE, CHASE, RECOVER or COOLDOWN. WINDUP and STRIKE have super armor, so a hit there is a trade. |
@@ -281,7 +382,9 @@ See **Step 2: weapons** above for every per-weapon field.
 | Hit Flash | `flash_color` → `flash_fade_color` | white → red | |
 | | `flash_time` / `flash_fade_time` | 0.07 / 0.11 s | White to red, then red to clear |
 
-The enemy animations (`windup`, `strike`, `recover`, `flinch`) are played time-scaled to these durations. Edit **poses** in `Enemy.tscn → AnimationPlayer` and **timing** in the `.tres`.
+Body also holds `body_scale`, `body_material` and `voice_pitch`; the Perception, Behavior (Pounce, Charge) and Noise groups are listed under **Step 6**. `aggro_range` is gone, replaced by perception.
+
+The enemy animations `windup`, `strike`, `recover`, `flinch`, `alert` and `crouch` are played time-scaled to these durations; `pounce`, `charge` and `stun` loop. Edit **poses** in `Enemy.tscn → AnimationPlayer` and **timing** in the `.tres`.
 
 ### Hit points and stamina (nodes)
 
@@ -318,6 +421,8 @@ The enemy animations (`windup`, `strike`, `recover`, `flinch`) are played time-s
 | `block_cone_dot` | 0.3 (≈145° cone) |
 | `hurt_shake_deg` / `hurt_shake_time` | 1.2° / 0.25 s |
 | `death_restart_delay` | 2.5 s |
+| `dungeon` | `Main/Dungeon`, set in `Main.tscn`; where noise goes. Empty = you make no noise. |
+| Noise group | `noise_sword_hit` 9, `noise_block` 9, `noise_whiff` 3, `noise_sprint_step` 5 every `sprint_step_interval` 0.3 s, `noise_drop` 4 (meters; see Step 6) |
 
 ### FX — `fx/`
 
@@ -345,7 +450,8 @@ The enemy animations (`windup`, `strike`, `recover`, `flinch`) are played time-s
 - **Input:** only `PlayerIntent` touches `Input`. It runs at process and physics priority -1, so it samples before `Player`. Attack, interact and restart are latched from input events, so a press can't be dropped between frames.
 - **Damage:** everything goes through `take_hit(hit: HitInfo)`. `Player.take_hit` checks block and cone and only then calls `Health`. `Enemy.take_hit` flashes, applies damage, then decides on a flinch (only if `data.can_flinch`, and never in WINDUP or STRIKE).
 - **Hitboxes:** `MeleeHitbox.begin_swing()` / `end_swing()` are called only from AnimationPlayer method tracks. Besides `body_entered` it also sweeps `get_overlapping_bodies()` while active, because a body already inside the box when monitoring turns on doesn't reliably fire `body_entered`. `overlap_point(body)` returns the midpoint between the hitbox shape and the body's shape, used as the FX contact point.
-- **Enemy states:** IDLE → CHASE → WINDUP (capped tracking) → STRIKE (facing locked, lunge) → RECOVER → COOLDOWN → CHASE. FLINCH returns to COOLDOWN if cooldown time is left, otherwise to CHASE. The lunge is an ease-out displacement over `strike_time`, applied through `velocity` + `move_and_slide()`, so walls and the player's capsule stop it.
+- **Enemy states:** the full list is in **Step 6 → States**. The melee core is CHASE → WINDUP (capped tracking) → STRIKE (facing locked, lunge) → RECOVER → COOLDOWN → CHASE. FLINCH returns to COOLDOWN if cooldown time is left, otherwise to CHASE. The lunge is an ease-out displacement over `strike_time`, applied through `velocity` + `move_and_slide()`. Walls stop it, and the rest of it is dropped the moment it touches you. Your own swing step stops on touching an enemy the same way. Without that, `move_and_slide` turns any off-centre contact into a slide round the other capsule.
+- **Perception and noise:** `Enemy` owns a `Perception` node and reads `can_see` / `last_known_pos`; no signals. Noise is a direct call to `Dungeon.emit_noise()`, which calls `Enemy.hear()` on the `enemies` group. There's no global bus.
 - **Hit feedback order** (`WeaponRig._on_hit_landed`): `take_hit` → cut the whoosh → thud → `fx.play_hit_puff` → camera kick → hitstop. Block impact (`WeaponRig.play_block_impact`): recoil animation → `fx.play_block_spark` at the blade → clang → shake → short hitstop. Kick and shake tweens ignore time scale, so the camera punches during the freeze. The enemy flash runs on scaled time, so it holds at full white through the freeze.
 - **FX pool** (`fx/fx_pool.gd` on `Main/FX`): `play_hit_puff(pos, dir)` and `play_block_spark(pos)` move the next pooled instance and call `restart()`. Pools are the children of `%HitPuffs` and `%BlockSparks`; add children to grow them.
 - **Whiff vs hit audio:** the whoosh starts with every swing and is cut on contact, so a hit sounds like a thud and a miss like a whoosh.
@@ -389,7 +495,7 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 | `godot --headless --path . --script res://tools/generate_placeholder_assets.gd` | Regenerates the palette PNG, the synthesized placeholder SFX, the weapon meshes and the 32×32 weapon icons (deterministic) |
 | `godot --headless --path . --script res://tools/dungeon_tests.gd [-- 1000 20]` | Generator checks. It tests `rotate_cell` against real transforms, every catalog door at every rotation, that the authoring warnings fire on broken rooms, and a batch of seeded layouts (stats as above). It then does real builds, where every connected door must meet its partner, every other door must be plugged, and spawned nodes must match the spawn log, with the player on the start spawn. Finally, **spawn tables**: each table rolled 22,000 times against its weights, each enemy variant's HP, scale, capsule and tint on the real scene, and the same seed built twice giving identical spawn logs. It prints seed 1's log. The arguments are batch size and build count. Exit code 0 means pass. |
 | `godot --path . --script res://tools/capture_dungeon.gd -- out.png 1 2 3` | Opens a window and renders a top-down view (ceilings hidden) and the view from spawn for each seed given |
-| `godot --headless --path . --script res://tools/combat_smoke_test.gd` | Drives `tests/CombatArena.tscn` (the step-1 room, so it stays deterministic) with input events, in three parts. **Part A (inventory and weapons):** E into the bag (and ignored while blocking); Tab pausing; every drop rule, driven through the slots' own drop handlers with real payloads; the right-click shortcuts; the tooltip and stats. Then drop to world and pick it back up, fists unable to swing, the iron cap turning 15 into 12 (and 2 into 1), the full-bag flip and notice, an equip during a swing waiting for it to end, and a probe per weapon. The probe measures swing length, the hitbox open/close times, lunge distance, stamina spent and damage dealt against that weapon's data. **Part B (fresh scene, grunt):** data applied, strike lunge, block, the windup turn cap, facing and position locked through RECOVER/COOLDOWN, hit-and-back-off caught, an early retreat escaping, and a punish to the kill. **Part C (fresh scene, variants):** the bruiser hits for 35 and doesn't flinch from a sword hit in RECOVER; the skitterer closes faster than your walk, winds up in 0.35 s and hits for 8. Exit code 0 means pass. |
+| `godot --headless --path . --script res://tools/combat_smoke_test.gd` | Drives `tests/CombatArena.tscn` (the step-1 room, so it stays deterministic) with input events, in four parts.<br>**Part A (inventory and weapons):**<br>• E into the bag (and ignored while blocking); Tab pausing; every drop rule, driven through the slots' own drop handlers with real payloads; the right-click shortcuts; the tooltip and stats.<br>• Drop to world and pick it back up; fists unable to swing; the iron cap turning 15 into 12 (and 2 into 1); the full-bag flip and notice; an equip during a swing waiting for it to end.<br>• A probe per weapon, measuring swing length, the hitbox open/close times, lunge distance and stamina spent against that weapon's data.<br>• Against a frozen grunt: damage per weapon, a swing from touching distance, and a swing step that glances off the grunt and must stop instead of sliding round it.<br>**Part B (fresh scene, grunt):** data applied, strike lunge, block, the windup turn cap, facing and position locked through RECOVER/COOLDOWN, hit-and-back-off caught, an early retreat escaping, a lunge that glances off you staying on its line, and a punish to the kill.<br>**Part C (fresh scene, behaviours):**<br>• Skitterer: spots you and out-runs your walk; crouches at 5 m and pounces for 8; a block eats the pounce; point-blank it bites.<br>• Bruiser: roars and charges from 7 m, hitting for 35 and slowing you to half speed for 1.5 s; a blocked charge does nothing but still stops; sidestepped into the arena wall it's dazed through 4 sword hits, then COOLDOWN.<br>**Part D (fresh scene, perception and noise):** unseen 4 m behind it and seen 4 m in front; losing sight → SEARCH → walks to the spot → home to IDLE; the arena's `Pillar` blocking line of sight; a sneak hit waking a second grunt by noise; walking past silent, sprinting past heard.<br>Exit code 0 means pass. |
 | `godot --path . --script res://tools/capture_views.gd -- out.png` | Opens a window and renders a contact sheet: pickups on the floor with the prompt, each weapon at rest, mid-swing and blocking, the hit puff and block spark, a skitterer / grunt / bruiser lineup, the inventory screen with a tooltip, and a pickup mid-flip off a full bag |
 
 ---
@@ -407,7 +513,7 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - **Drops are pulled back from walls** by a short ray, so an item dropped while facing a wall stays reachable.
 - **The HUD prints HP on the health bar**, so the armour check ("12, not 15") is readable without the inventory open.
 - **The enemy body is a small rig:** `Rig` → `Legs`, `Body` (pelvis) → Torso, Head, Eyes, both arms, Club. The `die` anim tips `Rig` over backward. Every mesh shares one local-to-scene overlay material for the hit flash.
-- **`EnemyData` has more than the 1.1 spec.** `aggro_range`, `chase_turn_rate`, the flinch, knockback and despawn values, and the hit-flash colors and timings moved in too, so `enemy.gd` has no tuning numbers left.
+- **`EnemyData` has more than the 1.1 spec.** `aggro_range` (removed in step 6), `chase_turn_rate`, the flinch, knockback and despawn values, and the hit-flash colors and timings moved in too, so `enemy.gd` has no tuning numbers left.
 - **COOLDOWN is its own state** rather than a timer inside CHASE. That makes "no tracking, no movement" explicit, and it shows up in `get_state_name()` for debugging.
 - **Player owns the `fx` reference** (`@export var fx: FxPool`, wired in `Main.tscn`). WeaponRig reaches it through the player, because a nested node inside an instanced scene can't be wired cleanly from Main.
 - **Small additions from step 1:** a `walk` loop for the enemy, an R restart, auto-restart on player death, the 0.15 s attack buffer, a 0.035 s hitstop on block impact, and a billboard HP bar.
@@ -423,6 +529,17 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - **Rolled enemies use the generator's `enemy_scene`** with the row's `EnemyData` set before the node enters the tree. `fixed_scene` is only read by the no-table fallback, as in step 3.
 - **`body_scale` scales the `Rig`, not just `Body`.** In this scene `Body` is the pelvis and upper body, so scaling it alone would leave grunt-sized legs. The capsule shape is local to scene and resized, not node-scaled, because physics doesn't like scaled shapes.
 - **Tints are two palette materials** (`hide_skitterer`, `hide_bruiser`) set from `EnemyData.body_material`, per the handoff's "three greybox materials is fine". The grunt keeps the scene's burlap.
+- **`aggro_range` is gone.** Perception replaced it outright; nothing reads a plain distance any more.
+- **A hit on an unaware enemy:** the handoff says it goes ALERT. Flinching types (grunt, skitterer) go to FLINCH instead, and the flinch is their startle beat. FLINCH ends in CHASE, and `last_known_pos` is already set to whoever hit them. A bruiser can't flinch, so it does go ALERT, and an ALERT that a hit started always ends in CHASE, even without line of sight. A hit while already in CHASE changes nothing beyond the usual flinch.
+- **`aware_sense_range` (2.5 m) is an addition.** Without it, an enemy fighting you loses you the moment you circle out of its 110° cone, which turns every fight into a strafe-reset. Unaware enemies still only see inside the cone, so sneaking up from behind works (the test does it).
+- **WALL_STUN hits flinch without ending the stun.** The handoff says to treat `can_flinch` as true while stunned. A full FLINCH would end the 2 s punish window on the first hit, so a stunned hit plays the flinch and knockback but stays in WALL_STUN.
+- **SEARCH walks home** after its look-around instead of going IDLE where it stands, so a floor doesn't slowly drift toward wherever you last fought. Each leg has a 6 s give-up, because there's no pathfinding and a straight-line walk can be stopped by a wall.
+- **The pounce arc is literal:** 9 m/s horizontal and a 1.2 m peak is about 1 s of flight, so a skitterer whose target sidesteps lands about 9 m from where it jumped. It lands in RECOVER wherever that is. That's either the punish window or a skitterer that ends up behind you; see the playtest questions.
+- **The charge shortens the hitbox** to `charge_hit_reach` (1.3 m) for the charge, so it hits on contact rather than 2.8 m out, then restores `attack_reach`. **`HitInfo.blocked`** is set by the receiver (`Player.take_hit`), so the charge knows not to apply the slow after a block.
+- **Lunges stop on contact.** At step 6's 1.4 m grunt lunge, a strike that met you even slightly off-centre had `move_and_slide` carry the rest of it round your capsule. The grunt ended up beside you, and sometimes past you. Your own swing step did the same to the grunt, so a point-blank swing could whiff. Both now drop the rest of the move once they touch the other body, and the smoke test checks a glancing lunge and a glancing step (0.30 m and 0.16 m of sideways slide before, about 0.01 m now). This surfaced as a flaky axe damage probe. I first blamed the hitbox and tried a shape query in `MeleeHitbox`. That turned out to be wrong, so it's reverted, and `melee_hitbox.gd` is unchanged from step 5.
+- **Perception staggers the whole look** (range, cone and ray), not just the ray, at 1 frame in 4 with a phase from the instance id. `can_see` holds between looks.
+- **`Main.tscn`'s `Dungeon` node now carries `dungeon.gd`.** It was already the floor's root, so noise lives where the enemies do. `tests/CombatArena.tscn` gained a `Dungeon` node (for noise) and a `Pillar` (for the line-of-sight test).
+- **Part A's damage probes freeze the grunt** (`DISABLE_MODE_KEEP_ACTIVE`, so it stays in the physics space). Since step 6 it sees you instantly, and a live grunt struck back mid-probe.
 
 ## Known limitations
 
@@ -433,3 +550,6 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - Torchlight can bleed through walls into a neighbouring room once a torch's shadow fades out (past 16 m). Out of scope for step 3.
 - The graph is a tree: no loops, no locked doors. Roughly 0.4 corridors per floor dead-end into a plug.
 - The generated room scenes list every shared resource in their headers, including ones a given room doesn't use. Godot drops the unused ones the first time you save each room in the editor.
+- No pathfinding. CHASE and SEARCH walk straight at their goal, so an enemy that lost you round a corner walks into the wall until SEARCH's 6 s give-up moves it on. A `NavigationRegion3D` baked per room would be the fix.
+- Noise ignores walls: a fight in one room wakes enemies within 9 m in the next. Cheap occlusion would be a ray per listener with a radius penalty when it's blocked.
+- Enemies don't alert each other by sight, only through the noise of a fight.

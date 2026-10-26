@@ -12,6 +12,10 @@
 [ext_resource type="Texture2D" path="res://art/palette/palette.png" id="10_palette"]
 [ext_resource type="AudioStream" path="res://audio/sfx/enemy_grunt.wav" id="11_grunt"]
 [ext_resource type="AudioStream" path="res://audio/sfx/whoosh.wav" id="12_whoosh"]
+[ext_resource type="Script" path="res://enemy/perception.gd" id="13_perception"]
+[ext_resource type="AudioStream" path="res://audio/sfx/enemy_bark.wav" id="14_bark"]
+[ext_resource type="AudioStream" path="res://audio/sfx/enemy_chitter.wav" id="15_chitter"]
+[ext_resource type="AudioStream" path="res://audio/sfx/enemy_roar.wav" id="16_roar"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_flash"]
 resource_local_to_scene = true
@@ -423,14 +427,221 @@ tracks/3/keys = {
 "values": [Vector3(0.6981, 0, 0), Vector3(2.4435, 0, 0)]
 }
 
+[sub_resource type="Animation" id="Animation_alert"]
+resource_name = "alert"
+length = 0.4
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.08, 0.4),
+"transitions": PackedFloat32Array(0.5, -2, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0.12, 0, 0), Vector3(0, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.08, 0.4),
+"transitions": PackedFloat32Array(0.5, -2, 1),
+"update": 0,
+"values": [Vector3(0.6981, 0, 0), Vector3(0.95, 0, 0), Vector3(0.6981, 0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_crouch"]
+resource_name = "crouch"
+length = 0.4
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.4),
+"transitions": PackedFloat32Array(0.5, 1, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(-0.5, 0, 0), Vector3(-0.55, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.4),
+"transitions": PackedFloat32Array(0.5, 1, 1),
+"update": 0,
+"values": [Vector3(0.6981, 0, 0), Vector3(-0.5, 0, 0.35), Vector3(-0.55, 0, 0.35)]
+}
+
+[sub_resource type="Animation" id="Animation_pounce"]
+resource_name = "pounce"
+length = 0.5
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.15),
+"transitions": PackedFloat32Array(0.5, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(-0.25, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.15),
+"transitions": PackedFloat32Array(0.5, 1),
+"update": 0,
+"values": [Vector3(-0.55, 0, 0), Vector3(-0.8, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.12),
+"transitions": PackedFloat32Array(0.5, 1),
+"update": 0,
+"values": [Vector3(-0.55, 0, 0.35), Vector3(1.75, 0, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_charge"]
+resource_name = "charge"
+length = 0.5
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.5),
+"transitions": PackedFloat32Array(-2, -2, 1),
+"update": 0,
+"values": [Vector3(-0.45, 0, 0), Vector3(-0.5, 0, 0.05), Vector3(-0.45, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.25, 0.5),
+"transitions": PackedFloat32Array(-2, -2, 1),
+"update": 0,
+"values": [Vector3(0.2, 0, 0.35), Vector3(0.3, 0, 0.4), Vector3(0.2, 0, 0.35)]
+}
+
+[sub_resource type="Animation" id="Animation_stun"]
+resource_name = "stun"
+length = 0.9
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rig:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.22, 0.45, 0.67, 0.9),
+"transitions": PackedFloat32Array(-2, -2, -2, -2, 1),
+"update": 0,
+"values": [Vector3(0, 0, 0), Vector3(0, 0, 0.1), Vector3(0, 0, 0), Vector3(0, 0, -0.1), Vector3(0, 0, 0)]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rig/Body:rotation")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.45, 0.9),
+"transitions": PackedFloat32Array(-2, -2, 1),
+"update": 0,
+"values": [Vector3(0.3, 0, 0), Vector3(0.36, 0, 0.04), Vector3(0.3, 0, 0)]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rig/Body/ArmPivot:rotation")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0, 0.45, 0.9),
+"transitions": PackedFloat32Array(-2, -2, 1),
+"update": 0,
+"values": [Vector3(0.05, 0, 0), Vector3(0.12, 0, -0.05), Vector3(0.05, 0, 0)]
+}
+
 [sub_resource type="AnimationLibrary" id="AnimationLibrary_enemy"]
 _data = {
 &"RESET": SubResource("Animation_reset"),
+&"alert": SubResource("Animation_alert"),
+&"charge": SubResource("Animation_charge"),
+&"crouch": SubResource("Animation_crouch"),
 &"die": SubResource("Animation_die"),
 &"flinch": SubResource("Animation_flinch"),
 &"idle": SubResource("Animation_idle"),
+&"pounce": SubResource("Animation_pounce"),
 &"recover": SubResource("Animation_recover"),
 &"strike": SubResource("Animation_strike"),
+&"stun": SubResource("Animation_stun"),
 &"walk": SubResource("Animation_walk"),
 &"windup": SubResource("Animation_windup")
 }
@@ -531,6 +742,18 @@ libraries = {
 &"": SubResource("AnimationLibrary_enemy")
 }
 
+[node name="Perception" type="Node3D" parent="."]
+unique_name_in_owner = true
+process_physics_priority = -1
+position = Vector3(0, 1.7, -0.1)
+script = ExtResource("13_perception")
+
+[node name="SightRay" type="RayCast3D" parent="Perception"]
+unique_name_in_owner = true
+enabled = false
+target_position = Vector3(0, 0, -12)
+collision_mask = 3
+
 [node name="TellFlash" type="OmniLight3D" parent="."]
 unique_name_in_owner = true
 visible = false
@@ -567,6 +790,22 @@ show_percentage = false
 unique_name_in_owner = true
 position = Vector3(0, 1.6, 0)
 stream = ExtResource("11_grunt")
+
+[node name="BarkSfx" type="AudioStreamPlayer3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 1.6, 0)
+stream = ExtResource("14_bark")
+
+[node name="ChitterSfx" type="AudioStreamPlayer3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 1, 0)
+stream = ExtResource("15_chitter")
+
+[node name="RoarSfx" type="AudioStreamPlayer3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 1.6, 0)
+stream = ExtResource("16_roar")
+unit_size = 16.0
 
 [node name="SwingSfx" type="AudioStreamPlayer3D" parent="."]
 unique_name_in_owner = true

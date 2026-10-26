@@ -6,6 +6,17 @@ extends CharacterBody3D
 @export var starting_weapon: WeaponData
 ## Pooled hit/block particles in the level (Main/FX). Optional, so Player.tscn still runs on its own.
 @export var fx: FxPool
+## Noise goes through here (Dungeon.emit_noise). Optional; without it the player makes no noise.
+@export var dungeon: Dungeon
+
+@export_group("Noise")
+## Radii in meters (before each enemy's hearing). Walking is silent on purpose: that's the sneak.
+@export var noise_sword_hit: float = 9.0
+@export var noise_block: float = 9.0
+@export var noise_whiff: float = 3.0
+@export var noise_sprint_step: float = 5.0
+@export var sprint_step_interval: float = 0.3
+@export var noise_drop: float = 4.0
 
 @export_group("Dropping")
 ## What a dropped item becomes. Same scene the generator uses for loot.
@@ -46,6 +57,7 @@ extends CharacterBody3D
 @onready var _health: Health = %Health
 @onready var _stamina: Stamina = %Stamina
 @onready var _inventory: Inventory = %Inventory
+@onready var _effects: PlayerEffects = %Effects
 @onready var _head: Node3D = %Head
 @onready var _weapon_rig: WeaponRig = %WeaponRig
 @onready var _hud: Hud = %HUD
@@ -61,6 +73,7 @@ var _lunge_time: float = 0.0
 var _dead: bool = false
 var _interact_target: Node3D
 var _interact_prompt: String = ""
+var _sprint_step_left: float = 0.0
 
 ## Read-only access for scene-level code (Main's debug keys, the inventory screen, pickups).
 var intent: PlayerIntent:
@@ -75,10 +88,14 @@ var health: Health:
 var stamina: Stamina:
 	get:
 		return _stamina
+var effects: PlayerEffects:
+	get:
+		return _effects
 
 
 func _ready() -> void:
 	_hud.bind(_health, _stamina)
+	_effects.slow_changed.connect(_hud.set_slowed)
 	_health.died.connect(_on_died)
 	_inventory.equip(starting_weapon)
 	_inventory_screen.bind(self)
@@ -103,6 +120,7 @@ func _physics_process(delta: float) -> void:
 		_weapon_rig.update_combat(_intent.attack_pressed, _intent.block_held, delta)
 		_update_interact()
 	_move(delta)
+	_tick_sprint_noise(delta)
 
 
 func take_hit(hit: HitInfo) -> void:
@@ -110,7 +128,9 @@ func take_hit(hit: HitInfo) -> void:
 		return
 	if hit.blockable and _weapon_rig.is_blocking and _is_in_front(hit.source):
 		# v1: infinite block, zero damage.
+		hit.blocked = true
 		_weapon_rig.play_block_impact()
+		make_noise(noise_block)
 		return
 	# PLACEHOLDER armour: flat reduction, never below 1.
 	var damage: int = maxi(1, hit.damage - _inventory.total_armour())
@@ -151,6 +171,18 @@ func drop_item(item: ItemData) -> void:
 	pickup.rotation.y = rotation.y
 	drop_parent.add_child(pickup)
 	pickup.set_item(item)
+	make_noise(noise_drop)
+
+
+## Tells every enemy within `radius` (scaled by its hearing) where you are.
+func make_noise(radius: float) -> void:
+	if dungeon:
+		dungeon.emit_noise(global_position, radius)
+
+
+## Where enemies aim their line-of-sight ray.
+func eye_position() -> Vector3:
+	return _head.global_position
 
 
 ## Called by a Pickup that bounced off a full bag.
@@ -184,6 +216,17 @@ func _move(delta: float) -> void:
 		vertical += get_gravity().y * delta
 	velocity = Vector3(_move_velocity.x + lunge.x, vertical, _move_velocity.z + lunge.z)
 	move_and_slide()
+	if _lunge_time < _lunge_duration and _touching_enemy():
+		_lunge_time = _lunge_duration
+
+
+## The rest of a swing step is dropped once you touch an enemy. Otherwise move_and_slide turns any
+## off-centre contact into a slide round its capsule and out of your own swing.
+func _touching_enemy() -> bool:
+	for i: int in get_slide_collision_count():
+		if get_slide_collision(i).get_collider() is Enemy:
+			return true
+	return false
 
 
 ## Velocity that moves this tick's slice of the lunge curve. Exact at any tick rate.
@@ -220,12 +263,26 @@ func _update_interact() -> void:
 			_hud.show_prompt(prompt)
 
 
+## A footstep's worth of noise every sprint_step_interval while actually sprinting. Walking is silent.
+func _tick_sprint_noise(delta: float) -> void:
+	var flat_speed: float = Vector2(velocity.x, velocity.z).length()
+	var sprinting: bool = not _dead and _intent.sprint_held and is_on_floor() and flat_speed > walk_speed * _effects.speed_mult
+	if not sprinting:
+		_sprint_step_left = 0.0
+		return
+	_sprint_step_left -= delta
+	if _sprint_step_left <= 0.0:
+		_sprint_step_left = sprint_step_interval
+		make_noise(noise_sprint_step)
+
+
 func _max_speed() -> float:
+	var base: float = walk_speed
 	if _weapon_rig.is_blocking:
-		return block_speed
-	if _intent.sprint_held:
-		return sprint_speed
-	return walk_speed
+		base = block_speed
+	elif _intent.sprint_held:
+		base = sprint_speed
+	return base * _effects.speed_mult
 
 
 func _is_in_front(source: Node3D) -> bool:

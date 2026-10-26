@@ -38,6 +38,10 @@ func _initialize() -> void:
 	_write_wav("res://audio/sfx/enemy_grunt.wav", _voice(0.42, 90.0, 125.0, 70.0, 650.0, 1100.0, 0.15))
 	_write_wav("res://audio/sfx/player_hurt.wav", _voice(0.24, 160.0, 210.0, 120.0, 750.0, 1250.0, 0.25))
 	_write_wav("res://audio/sfx/nope.wav", _nope())
+	# Rising pitch reads as a question: the "huh?" when an enemy spots or hears you.
+	_write_wav("res://audio/sfx/enemy_bark.wav", _voice(0.3, 105.0, 120.0, 175.0, 720.0, 1250.0, 0.2))
+	_write_wav("res://audio/sfx/enemy_chitter.wav", _chitter())
+	_write_wav("res://audio/sfx/enemy_roar.wav", _roar())
 	_write_weapons()
 	_write_armor()
 	print("Placeholder assets written.")
@@ -173,6 +177,57 @@ func _write_armor() -> void:
 		IconStroke.new(Vector2(16, 22), Vector2(16, 29), 1.3, 28),
 		IconStroke.new(Vector2(12, 13), Vector2(18, 11), 0.8, 29),
 	])
+
+
+## A fast train of bright clicks with a little jitter: the skitterer's crouch tell.
+func _chitter() -> PackedFloat32Array:
+	var count: int = int(0.38 * SAMPLE_RATE)
+	var out: PackedFloat32Array = PackedFloat32Array()
+	out.resize(count)
+	var low: float = 0.0
+	var band: float = 0.0
+	var f: float = 2.0 * sin(PI * 3200.0 / SAMPLE_RATE)
+	var next_click: float = 0.0
+	var click_start: float = -1.0
+	for i: int in count:
+		var t: float = float(i) / SAMPLE_RATE
+		if t >= next_click:
+			click_start = t
+			next_click = t + _rng.randf_range(0.028, 0.045)
+		var age: float = t - click_start
+		var excite: float = _rng.randf_range(-1.0, 1.0) * exp(-age * 900.0)
+		low += f * band
+		band += f * (excite - low - 0.15 * band)
+		out[i] = band * (1.0 - smoothstep(0.75, 1.0, t / 0.38))
+	return _normalized(out, 0.55)
+
+
+## Low growling saw with a slow amplitude wobble and breath: the bruiser's charge roar.
+func _roar() -> PackedFloat32Array:
+	var length: float = 0.85
+	var count: int = int(length * SAMPLE_RATE)
+	var out: PackedFloat32Array = PackedFloat32Array()
+	out.resize(count)
+	var phase: float = 0.0
+	var low_a: float = 0.0
+	var band_a: float = 0.0
+	var fa: float = 2.0 * sin(PI * 420.0 / SAMPLE_RATE)
+	var low_b: float = 0.0
+	var band_b: float = 0.0
+	var fb: float = 2.0 * sin(PI * 900.0 / SAMPLE_RATE)
+	for i: int in count:
+		var t: float = float(i) / count
+		var f0: float = lerpf(58.0, 82.0, t / 0.35) if t < 0.35 else lerpf(82.0, 52.0, (t - 0.35) / 0.65)
+		phase = fmod(phase + f0 / SAMPLE_RATE, 1.0)
+		var growl: float = 0.65 + 0.35 * sin(TAU * 28.0 * t * length)
+		var source: float = (phase * 2.0 - 1.0) * growl + _rng.randf_range(-1.0, 1.0) * 0.45
+		low_a += fa * band_a
+		band_a += fa * (source - low_a - 0.35 * band_a)
+		low_b += fb * band_b
+		band_b += fb * (source - low_b - 0.45 * band_b)
+		var env: float = smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.7, 1.0, t))
+		out[i] = tanh((band_a + band_b * 0.5) * env * 2.0)
+	return _normalized(out, 0.85)
 
 
 ## Two descending, low, slightly square blips: a dull "nope".
