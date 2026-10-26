@@ -20,6 +20,12 @@ const CUTTER_TOLERANCE: float = 0.5
 	set(value):
 		footprint = value
 		update_configuration_warnings()
+## Rooms never touch rooms: the generator only attaches connectors to rooms and rooms to connectors.
+## Every CORRIDOR is a connector.
+@export var is_connector: bool = false:
+	set(value):
+		is_connector = value
+		update_configuration_warnings()
 
 @export_group("Placement Rules")
 ## Fewest non-corridor rooms between START and this one (e.g. a boss room kept deep). 0 = anywhere.
@@ -62,6 +68,8 @@ func get_authoring_problems() -> PackedStringArray:
 	var problems: PackedStringArray = []
 	if footprint.x < 1 or footprint.y < 1:
 		problems.append("Footprint must be at least 1x1 cells.")
+	if type == Type.CORRIDOR and not is_connector:
+		problems.append("CORRIDOR rooms must have is_connector on; the generator puts one between every two rooms.")
 	var doors: Array[Door] = get_doors()
 	if doors.is_empty():
 		problems.append("Room has no Door markers under Doors.")

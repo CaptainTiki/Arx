@@ -77,11 +77,10 @@ func _draw_map() -> void:
 		if room and not room.map_tile:
 			_canvas.draw_rect(Rect2(origin + Vector2(cell) * px, Vector2(px, px)), _floor_color(room))
 	# Walls: every revealed cell edge that borders another room or nothing. Neighbouring rooms each
-	# draw their own side, so a shared wall reads as a dark seam.
+	# draw their own side, so a shared wall reads as a dark seam. A loop bridge counts as one room.
 	for cell: Vector2i in revealed:
-		var index: int = model.room_index_at(cell)
 		for dir: int in 4:
-			if model.room_index_at(cell + Door.offset(dir)) != index:
+			if not model.joined(cell, cell + Door.offset(dir)):
 				_canvas.draw_rect(_edge_rect(origin, cell, dir, px, line, 0.0, 1.0), wall_color)
 	# Doorways: the middle half of the edge (a 2 m door in a 4 m cell) is cut out of the seam. One that
 	# leads somewhere not yet seen gets a tick poking out: the "where next" cue.

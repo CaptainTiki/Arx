@@ -1,0 +1,82 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://dungeon/room.gd" id="1_room"]
+[ext_resource type="Script" path="res://dungeon/door.gd" id="2_door"]
+[ext_resource type="Material" path="res://art/materials/stone_floor.tres" id="4_floor"]
+[ext_resource type="Material" path="res://art/materials/stone_wall.tres" id="5_wall"]
+[ext_resource type="Material" path="res://art/materials/stone_ceiling.tres" id="6_ceiling"]
+[ext_resource type="PackedScene" path="res://world/Torch.tscn" id="7_torch"]
+
+[node name="Corridor_2" type="Node3D"]
+script = ExtResource("1_room")
+type = 1
+weight = 4.0
+footprint = Vector2i(1, 2)
+is_connector = true
+
+[node name="Geometry" type="Node3D" parent="."]
+
+[node name="Floor" type="CSGBox3D" parent="Geometry"]
+position = Vector3(2, -0.1, 4)
+use_collision = true
+size = Vector3(4, 0.2, 8)
+material = ExtResource("4_floor")
+
+[node name="Ceiling" type="CSGBox3D" parent="Geometry"]
+position = Vector3(2, 3.5, 4)
+size = Vector3(4, 0.2, 8)
+material = ExtResource("6_ceiling")
+
+[node name="Walls" type="CSGCombiner3D" parent="Geometry"]
+use_collision = true
+
+[node name="WallNorth" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(2, 1.7, 0.15)
+size = Vector3(4, 3.4, 0.3)
+material = ExtResource("5_wall")
+
+[node name="WallSouth" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(2, 1.7, 7.85)
+size = Vector3(4, 3.4, 0.3)
+material = ExtResource("5_wall")
+
+[node name="WallWest" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(0.15, 1.7, 4)
+size = Vector3(0.3, 3.4, 8)
+material = ExtResource("5_wall")
+
+[node name="WallEast" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(3.85, 1.7, 4)
+size = Vector3(0.3, 3.4, 8)
+material = ExtResource("5_wall")
+
+[node name="DoorwayN" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(2, 1.5, 0.15)
+operation = 2
+size = Vector3(2, 3, 0.5)
+material = ExtResource("5_wall")
+
+[node name="DoorwayS" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(2, 1.5, 7.85)
+operation = 2
+size = Vector3(2, 3, 0.5)
+material = ExtResource("5_wall")
+
+[node name="Lights" type="Node3D" parent="."]
+
+[node name="TorchW" parent="Lights" instance=ExtResource("7_torch")]
+position = Vector3(0.35, 2.3, 4)
+
+[node name="Doors" type="Node3D" parent="."]
+
+[node name="DoorN" type="Marker3D" parent="Doors"]
+position = Vector3(2, 0, 0)
+script = ExtResource("2_door")
+dir = 0
+
+[node name="DoorS" type="Marker3D" parent="Doors"]
+position = Vector3(2, 0, 8)
+script = ExtResource("2_door")
+dir = 2
+
+[node name="Spawns" type="Node3D" parent="."]

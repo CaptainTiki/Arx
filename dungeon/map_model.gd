@@ -11,9 +11,16 @@ var _room_at: Dictionary[Vector2i, int] = {}
 
 static func from_plan(plan: Array[DungeonGenerator.Placement]) -> MapModel:
 	var model: MapModel = MapModel.new()
+	var bridge_groups: Dictionary[int, int] = {}
 	for i: int in plan.size():
 		var placement: DungeonGenerator.Placement = plan[i]
 		var room: MapRoom = MapRoom.new()
+		room.group = i
+		if placement.loop:
+			# A bridge's pieces draw as one corridor: no seams between them.
+			if not bridge_groups.has(placement.bridge_id):
+				bridge_groups[placement.bridge_id] = i
+			room.group = bridge_groups[placement.bridge_id]
 		room.cells = placement.cells()
 		room.type = placement.template.type
 		room.main_path = placement.main_path
@@ -43,7 +50,16 @@ func room_at(cell: Vector2i) -> MapRoom:
 	return rooms[index] if index >= 0 else null
 
 
+## Whether two cells are inside the same room (or the same loop bridge), so no wall runs between them.
+func joined(a: Vector2i, b: Vector2i) -> bool:
+	var first: MapRoom = room_at(a)
+	var second: MapRoom = room_at(b)
+	return first != null and second != null and first.group == second.group
+
+
 class MapRoom:
+	## Rooms sharing a group draw without walls between them: each room alone, except the pieces of a bridge.
+	var group: int
 	var cells: Array[Vector2i] = []
 	var doors: Array[MapDoor] = []
 	var type: int

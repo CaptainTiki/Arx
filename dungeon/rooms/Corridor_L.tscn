@@ -16,7 +16,9 @@
 [node name="Corridor_L" type="Node3D"]
 script = ExtResource("1_room")
 type = 1
+weight = 2.0
 footprint = Vector2i(2, 2)
+is_connector = true
 
 [node name="Geometry" type="Node3D" parent="."]
 
