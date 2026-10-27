@@ -98,6 +98,21 @@ var effects: PlayerEffects:
 signal respawn_requested
 
 var _head_rest_y: float = 0.0
+var _base_max_hp: int = 100
+var _base_max_stamina: float = 100.0
+var _base_regen: float = 30.0
+
+
+## Gear changed: re-derive the maxima from the scene's base values plus worn affixes. HP keeps its
+## current value (clamped), so swapping a +HP piece off doesn't heal or hurt you.
+func _apply_gear_stats() -> void:
+	var max_hp: int = _base_max_hp + roundi(_inventory.stat_total(Stat.Kind.MAX_HP))
+	if max_hp != _health.max_hp:
+		_health.set_max_hp(max_hp)
+	_stamina.max_stamina = _base_max_stamina + _inventory.stat_total(Stat.Kind.MAX_STAMINA)
+	_stamina.current = minf(_stamina.current, _stamina.max_stamina)
+	_stamina.regen_per_second = _base_regen + _inventory.stat_total(Stat.Kind.STAMINA_REGEN)
+	_stamina.changed.emit(_stamina.current, _stamina.max_stamina)
 
 
 func _ready() -> void:
@@ -105,6 +120,10 @@ func _ready() -> void:
 	_hud.bind(_health, _stamina)
 	_effects.slow_changed.connect(_hud.set_slowed)
 	_health.died.connect(_on_died)
+	_base_max_hp = _health.max_hp
+	_base_max_stamina = _stamina.max_stamina
+	_base_regen = _stamina.regen_per_second
+	_inventory.changed.connect(_apply_gear_stats)
 	_inventory.equip(starting_weapon)
 	_inventory_screen.bind(self)
 	_hud.bind_map(dungeon, self)
@@ -310,7 +329,7 @@ func _max_speed() -> float:
 		base = block_speed
 	elif _intent.sprint_held:
 		base = sprint_speed
-	return base * _effects.speed_mult
+	return base * _effects.speed_mult * _inventory.stat_mult(Stat.Kind.MOVE_SPEED_PCT)
 
 
 func _is_in_front(source: Node3D) -> bool:

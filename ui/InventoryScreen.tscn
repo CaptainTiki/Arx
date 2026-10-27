@@ -289,6 +289,13 @@ theme_override_colors/font_color = Color(0.788, 0.753, 0.725, 1)
 theme_override_font_sizes/font_size = 14
 text = "StaminaLabel"
 
+[node name="GearLabel" type="Label" parent="Root/Stats"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.7, 0.85, 1)
+theme_override_font_sizes/font_size = 13
+text = "GearLabel"
+
 [node name="Hint" type="Label" parent="Root"]
 layout_mode = 1
 anchors_preset = 7

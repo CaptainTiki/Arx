@@ -368,9 +368,13 @@ func shake(strength_deg: float, duration: float) -> void:
 func _on_hit_landed(target: Node3D) -> void:
 	var to_target: Vector3 = target.global_position - _player.global_position
 	to_target.y = 0.0
-	var damage: int = roundi(weapon.damage * lerpf(1.0, weapon.heavy_damage_mult, _swing_charge))
+	var inventory: Inventory = _player.inventory
+	var heavy_mult: float = weapon.heavy_damage_mult * inventory.stat_mult(Stat.Kind.HEAVY_DAMAGE_PCT)
+	var damage: int = roundi(weapon.damage * inventory.stat_mult(Stat.Kind.DAMAGE_PCT) * lerpf(1.0, heavy_mult, _swing_charge))
 	var hit: HitInfo = HitInfo.new(damage, _player, to_target.normalized(), true)
 	hit.heavy = _swing_is_heavy
+	hit.poise = 1 + roundi(inventory.stat_total(Stat.Kind.POISE_DAMAGE))
+	hit.backstab_bonus_pct = inventory.stat_total(Stat.Kind.BACKSTAB_PCT)
 	var contact: Vector3 = _hitbox.overlap_point(target)
 	target.call(&"take_hit", hit)
 	_landed_this_swing = true

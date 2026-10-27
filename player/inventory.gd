@@ -90,7 +90,21 @@ func total_armour() -> int:
 		var armor: ArmorData = item as ArmorData
 		if armor:
 			total += armor.armour
+	return total + roundi(stat_total(Stat.Kind.ARMOUR))
+
+
+## Sum of one stat's affixes across everything worn. Percent kinds come back as percents (12 = +12%).
+func stat_total(kind: Stat.Kind) -> float:
+	var total: float = 0.0
+	for item: ItemData in equipped.values():
+		if item:
+			total += item.stat(kind)
 	return total
+
+
+## 1.12 for +12%.
+func stat_mult(kind: Stat.Kind) -> float:
+	return 1.0 + stat_total(kind) / 100.0
 
 
 func first_free_index() -> int:

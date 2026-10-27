@@ -13,6 +13,10 @@ var heavy: bool = false
 var guard_broken: bool = false
 ## >1 when the target multiplied the damage (backstab, sneak attack). Feedback scales with it.
 var bonus: float = 1.0
+## How many poise hits this counts as (gear can make lights count double).
+var poise: int = 1
+## Extra percent on top of the target's backstab multiplier, from the attacker's gear.
+var backstab_bonus_pct: float = 0.0
 ## Set by the receiver when a block ate the hit, so the attacker can react (no slow on a blocked charge).
 var blocked: bool = false
 ## Set by the receiver to change how the hit reads on the attacker's side: the hit puff in this

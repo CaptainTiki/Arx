@@ -11,6 +11,7 @@ extends CanvasLayer
 @onready var _weapon_label: Label = %WeaponLabel
 @onready var _hp_label: Label = %HPLabel
 @onready var _stamina_label: Label = %StaminaLabel
+@onready var _gear_label: Label = %GearLabel
 @onready var _nope_sfx: AudioStreamPlayer = %NopeSfx
 
 ## Pixels between the cursor and the tooltip's corner.
@@ -87,7 +88,18 @@ func _refresh() -> void:
 	_weapon_label.text = "Weapon dmg: %s" % (str(weapon.damage) if weapon else "- (fists)")
 	_hp_label.text = "HP: %d / %d" % [_player.health.hp, _player.health.max_hp]
 	_stamina_label.text = "Stamina: %d / %d" % [roundi(_player.stamina.current), roundi(_player.stamina.max_stamina)]
+	_gear_label.text = _gear_summary()
 	_update_tooltip()
+
+
+## Every non-zero stat total from worn gear, one per line. Empty when nothing's rolled.
+func _gear_summary() -> String:
+	var lines: PackedStringArray = []
+	for kind: int in Stat.Kind.values():
+		var total: float = _inventory.stat_total(kind as Stat.Kind)
+		if not is_zero_approx(total):
+			lines.append(Stat.describe(kind as Stat.Kind, total))
+	return "\n".join(lines)
 
 
 func _on_slot_hovered(slot: ItemSlotBase) -> void:

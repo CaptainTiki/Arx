@@ -124,7 +124,7 @@ func take_hit(hit: HitInfo) -> void:
 	if was_unaware and data.sneak_mult > 1.0:
 		hit.bonus = data.sneak_mult
 	elif hit.source and data.backstab_mult > 1.0 and _is_behind(hit.source):
-		hit.bonus = data.backstab_mult
+		hit.bonus = data.backstab_mult * (1.0 + hit.backstab_bonus_pct / 100.0)
 	if hit.bonus > 1.0:
 		hit.damage = roundi(hit.damage * hit.bonus)
 	if data.guard and _guard_up() and hit.source and _guard_covers(hit.source):
@@ -152,7 +152,7 @@ func take_hit(hit: HitInfo) -> void:
 	# Super armor through the attack itself: hitting it mid-swing is a trade, not an interrupt.
 	var can_flinch: bool = (data.can_flinch or stunned) and not _in_attack()
 	if can_flinch and not stunned and not hit.heavy:
-		_poise_hits += 1
+		_poise_hits += maxi(hit.poise, 1)
 		can_flinch = _poise_hits >= data.poise
 	_health.take_hit(hit)
 	if _state != State.DEAD:
