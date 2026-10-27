@@ -35,6 +35,21 @@ const FLOOR_NORMAL_Y: float = 0.7
 @onready var _rig: Node3D = %Rig
 @onready var _tinted_meshes: Array[MeshInstance3D] = [%Torso, %ArmL, %Arm]
 @onready var _shield_mesh: Node3D = %Shield
+@onready var _shield_arm: Node3D = %ArmL
+
+@export_group("Shield Arm")
+## Guard up: arm across the chest, shield square to the front. (Rig/Body space, m / rad.)
+@export var shield_up_position: Vector3 = Vector3(-0.12, 0.36, -0.28)
+@export var shield_up_rotation: Vector3 = Vector3(0.0, 0.25, 0.1)
+## Guard down (attacking): arm back at the side, shield turned edge-on. The opening.
+@export var shield_down_position: Vector3 = Vector3(-0.4, 0.28, 0.08)
+@export var shield_down_rotation: Vector3 = Vector3(0.35, 1.3, -0.25)
+## Guard broken: flung wide.
+@export var shield_broken_position: Vector3 = Vector3(-0.58, 0.3, 0.18)
+@export var shield_broken_rotation: Vector3 = Vector3(0.6, 2.0, -0.7)
+@export var shield_pose_time: float = 0.14
+
+var _shield_tween: Tween
 @onready var _anim: AnimationPlayer = %AnimationPlayer
 @onready var _body_shape: CollisionShape3D = %BodyShape
 @onready var _tell_flash: OmniLight3D = %TellFlash
@@ -105,6 +120,13 @@ func take_hit(hit: HitInfo) -> void:
 	if hit.source:
 		_perception.last_known_pos = hit.source.global_position
 	var stunned: bool = _state == State.WALL_STUN or _state == State.GUARD_BROKEN
+	# Openings: a hit it never saw, or one from behind, lands harder.
+	if was_unaware and data.sneak_mult > 1.0:
+		hit.bonus = data.sneak_mult
+	elif hit.source and data.backstab_mult > 1.0 and _is_behind(hit.source):
+		hit.bonus = data.backstab_mult
+	if hit.bonus > 1.0:
+		hit.damage = roundi(hit.damage * hit.bonus)
 	if data.guard and _guard_up() and hit.source and _guard_covers(hit.source):
 		if hit.heavy:
 			# Smashed open. The heavy lands, and the guard stays down for the punish window.
@@ -408,6 +430,8 @@ func _enter(next: State) -> void:
 	_state_time = 0.0
 	if next == State.WINDUP or next == State.CROUCH or next == State.CHARGE_WINDUP:
 		_poise_hits = 0
+	if data.guard:
+		_pose_shield_arm()
 	_chase_velocity = Vector3.ZERO
 	match previous:
 		State.RECOVER, State.WALL_STUN, State.GUARD_BROKEN:
@@ -513,6 +537,8 @@ func _apply_body() -> void:
 		for mesh: MeshInstance3D in _tinted_meshes:
 			mesh.material_override = data.body_material
 	_shield_mesh.visible = data.guard
+	if data.guard:
+		_pose_shield_arm(true)
 
 
 ## The shield is up whenever it isn't attacking, staggered or down.
@@ -521,6 +547,38 @@ func _guard_up() -> bool:
 		State.IDLE, State.ALERT, State.CHASE, State.SEARCH, State.COOLDOWN:
 			return true
 	return false
+
+
+func _is_behind(source: Node3D) -> bool:
+	var to_source: Vector3 = _flat(source.global_position - global_position)
+	if to_source.length_squared() < 0.0001:
+		return false
+	return _facing().dot(to_source.normalized()) <= data.backstab_dot
+
+
+## Moves the shield arm to match the state: up while guarding, down while attacking, flung when
+## broken. The arm isn't in any animation clip, so this owns it.
+func _pose_shield_arm(instant: bool = false) -> void:
+	var pos: Vector3
+	var rot: Vector3
+	if _state == State.GUARD_BROKEN:
+		pos = shield_broken_position
+		rot = shield_broken_rotation
+	elif _guard_up():
+		pos = shield_up_position
+		rot = shield_up_rotation
+	else:
+		pos = shield_down_position
+		rot = shield_down_rotation
+	if _shield_tween:
+		_shield_tween.kill()
+	if instant:
+		_shield_arm.position = pos
+		_shield_arm.rotation = rot
+		return
+	_shield_tween = create_tween().set_parallel(true).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	_shield_tween.tween_property(_shield_arm, ^"position", pos, shield_pose_time)
+	_shield_tween.tween_property(_shield_arm, ^"rotation", rot, shield_pose_time)
 
 
 func _guard_covers(source: Node3D) -> bool:

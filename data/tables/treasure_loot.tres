@@ -10,6 +10,7 @@
 [ext_resource type="Resource" path="res://items/armor/rawhide_gloves.tres" id="8_gloves"]
 [ext_resource type="Resource" path="res://items/armor/rawhide_boots.tres" id="9_boots"]
 [ext_resource type="Resource" path="res://items/armor/iron_cap.tres" id="10_iron_cap"]
+[ext_resource type="Resource" path="res://items/shields/wooden_shield.tres" id="11_shield"]
 
 [sub_resource type="Resource" id="Entry_sword"]
 script = ExtResource("2_entry")
@@ -46,10 +47,15 @@ item = ExtResource("9_boots")
 script = ExtResource("2_entry")
 item = ExtResource("10_iron_cap")
 
+[sub_resource type="Resource" id="Entry_shield"]
+script = ExtResource("2_entry")
+weight = 1.5
+item = ExtResource("11_shield")
+
 [sub_resource type="Resource" id="Entry_nothing"]
 script = ExtResource("2_entry")
 weight = 1.0
 
 [resource]
 script = ExtResource("1_table")
-entries = Array[ExtResource("2_entry")]([SubResource("Entry_sword"), SubResource("Entry_axe"), SubResource("Entry_dagger"), SubResource("Entry_cap"), SubResource("Entry_vest"), SubResource("Entry_gloves"), SubResource("Entry_boots"), SubResource("Entry_iron_cap"), SubResource("Entry_nothing")])
+entries = Array[ExtResource("2_entry")]([SubResource("Entry_sword"), SubResource("Entry_axe"), SubResource("Entry_dagger"), SubResource("Entry_cap"), SubResource("Entry_vest"), SubResource("Entry_gloves"), SubResource("Entry_boots"), SubResource("Entry_iron_cap"), SubResource("Entry_shield"), SubResource("Entry_nothing")])

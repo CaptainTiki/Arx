@@ -392,8 +392,8 @@ func _on_hit_landed(target: Node3D) -> void:
 			_player.fx.play_block_spark(contact)
 	if _player.fx:
 		_player.fx.play_hit_puff(contact, hit.direction, hit.puff_material)
-	kick(hit_kick_deg.lerp(heavy_hit_kick_deg, _swing_charge))
-	_hitstop(lerpf(weapon.hitstop, weapon.heavy_hitstop, _swing_charge))
+	kick(hit_kick_deg.lerp(heavy_hit_kick_deg, _swing_charge) * hit.bonus)
+	_hitstop(lerpf(weapon.hitstop, weapon.heavy_hitstop, _swing_charge) * hit.bonus)
 
 
 func _on_animation_finished(anim_name: StringName) -> void:

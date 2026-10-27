@@ -109,6 +109,13 @@ enum Behavior { MELEE, POUNCE, CHARGE }
 ## Dazed after running into a wall: the punish window. Hits flinch it but don't end the stun.
 @export var wall_stun_time: float = 2.0
 
+@export_group("Openings")
+## Damage multiplier for a hit from behind (attacker past backstab_dot of its facing).
+@export var backstab_mult: float = 1.5
+@export var backstab_dot: float = -0.3
+## Damage multiplier for a hit it never saw coming (unaware, searching, or still turning to look).
+@export var sneak_mult: float = 2.0
+
 @export_group("Guard")
 ## Carries a shield. While the guard is up (idle, chasing, cooling down) a light from the front
 ## clangs off: no damage, no stagger. A heavy from the front breaks the guard open for

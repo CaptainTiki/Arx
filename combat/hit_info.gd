@@ -11,6 +11,8 @@ var blockable: bool = true
 var heavy: bool = false
 ## Set by a guarding enemy when this heavy smashed its guard open.
 var guard_broken: bool = false
+## >1 when the target multiplied the damage (backstab, sneak attack). Feedback scales with it.
+var bonus: float = 1.0
 ## Set by the receiver when a block ate the hit, so the attacker can react (no slow on a blocked charge).
 var blocked: bool = false
 ## Set by the receiver to change how the hit reads on the attacker's side: the hit puff in this
