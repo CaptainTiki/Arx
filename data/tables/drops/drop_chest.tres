@@ -51,6 +51,12 @@ script = ExtResource("2_entry")
 weight = 1.0
 item = ExtResource("10_iron_cap")
 
+[sub_resource type="Resource" id="Entry_gold"]
+script = ExtResource("2_entry")
+weight = 4.0
+gold_min = 15
+gold_max = 40
+
 [resource]
 script = ExtResource("1_table")
-entries = Array[ExtResource("2_entry")]([SubResource("Entry_sword"), SubResource("Entry_axe"), SubResource("Entry_dagger"), SubResource("Entry_cap"), SubResource("Entry_vest"), SubResource("Entry_gloves"), SubResource("Entry_boots"), SubResource("Entry_iron_cap")])
+entries = Array[ExtResource("2_entry")]([SubResource("Entry_sword"), SubResource("Entry_axe"), SubResource("Entry_dagger"), SubResource("Entry_cap"), SubResource("Entry_vest"), SubResource("Entry_gloves"), SubResource("Entry_boots"), SubResource("Entry_iron_cap"), SubResource("Entry_gold")])
