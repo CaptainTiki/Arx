@@ -65,13 +65,15 @@ func _physics_process(_delta: float) -> void:
 
 ## The key goes in: chains start, the floor goes in over frames behind them, then the door opens.
 func _on_key_turned() -> void:
-	_start_watch()
+	if _generator.profile_build:
+		_start_watch()
 	_camp.gate.begin_open()
 	await _generator.generate_async(0, rooms_per_frame)
-	print("  floor ready at +%.0fms" % ((Time.get_ticks_usec() - _watch_start) / 1000.0))
 	_camp.gate.finish_open()
-	await get_tree().create_timer(4.0).timeout
-	_stop_watch("key turn → 4 s")
+	if _watching:
+		print("  floor ready at +%.0fms" % ((Time.get_ticks_usec() - _watch_start) / 1000.0))
+		await get_tree().create_timer(4.0).timeout
+		_stop_watch("key turn → 4 s")
 
 
 ## The key comes out (only reachable from outside): shut the gate and empty the castle.

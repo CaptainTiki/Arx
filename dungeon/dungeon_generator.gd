@@ -82,7 +82,7 @@ const UNREACHABLE: int = 1 << 20
 ## Fired by generate_async when the last room is in and the spawns are rolled.
 signal floor_ready
 ## Print a timing breakdown of each build phase (plan, room batches, spawns, torches).
-@export var profile_build: bool = true
+@export var profile_build: bool = false
 
 
 func _ready() -> void:
@@ -139,7 +139,7 @@ func generate(forced_seed: int = 0) -> void:
 ## Same floor, spread over frames: `rooms_per_frame` rooms go in, then a frame passes. Adding a CSG
 ## room to the tree bakes it on the main thread, so this is what keeps the gate theatre smooth.
 ## Awaitable; also emits floor_ready.
-func generate_async(forced_seed: int = 0, rooms_per_frame: int = 6, spawns_per_frame: int = 3) -> void:
+func generate_async(forced_seed: int = 0, rooms_per_frame: int = 6, spawns_per_frame: int = 4) -> void:
 	var t0: int = Time.get_ticks_usec()
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	# Template metadata is read from off-tree instances, so it loads here on the main thread; the
@@ -1080,9 +1080,18 @@ func _finish_build(plan: Array[Placement], rng: RandomNumberGenerator) -> void:
 ## Same, with a frame between every `spawns_per_frame` spawn points. Enemy scenes are the heavy
 ## instances (several ms each), so the spread counts points, not rooms.
 func _finish_build_async(plan: Array[Placement], rng: RandomNumberGenerator, spawns_per_frame: int) -> void:
-	_plug_doors()
-	last_spawn_log.clear()
+	# Plugs are CSG too: a dozen a frame.
 	var since_frame: int = 0
+	for room: Room in _rooms:
+		for door: Door in room.get_doors():
+			if not door.used and door.plug_scene:
+				door.add_child(door.plug_scene.instantiate())
+				since_frame += 1
+				if since_frame >= 12:
+					since_frame = 0
+					await get_tree().process_frame
+	last_spawn_log.clear()
+	since_frame = 0
 	for room_index: int in _rooms.size():
 		var room: Room = _rooms[room_index]
 		var spawns: Array[SpawnPoint] = room.get_spawn_points()
