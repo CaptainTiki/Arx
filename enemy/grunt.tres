@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="EnemyData" format=3]
 
 [ext_resource type="Script" path="res://enemy/enemy_data.gd" id="1_data"]
+[ext_resource type="Resource" path="res://data/tables/drops/drop_grunt.tres" id="2_drops"]
 
 [resource]
 script = ExtResource("1_data")
@@ -20,6 +21,7 @@ strike_lunge = 1.4
 chase_turn_rate = 460.0
 windup_turn_rate = 180.0
 tell_flash_time = 0.15
+drop_table = ExtResource("2_drops")
 flinch_time = 0.3
 flinch_knockback = 2.5
 knockback_decel = 14.0

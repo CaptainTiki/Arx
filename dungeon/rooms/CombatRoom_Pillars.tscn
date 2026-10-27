@@ -14,6 +14,7 @@
 [ext_resource type="Resource" path="res://weapons/rusted_dagger.tres" id="12_dagger"]
 [ext_resource type="Resource" path="res://data/tables/combat_enemy.tres" id="13_combat_enemy"]
 [ext_resource type="Resource" path="res://data/tables/combat_weapon.tres" id="14_combat_weapon"]
+[ext_resource type="Resource" path="res://data/tables/breakable_set.tres" id="15_breakable_set"]
 
 [node name="CombatRoom_Pillars" type="Node3D"]
 script = ExtResource("1_room")
@@ -158,3 +159,31 @@ script = ExtResource("3_spawn")
 kind = 1
 table = ExtResource("14_combat_weapon")
 fixed_item = ExtResource("11_axe")
+
+[node name="BreakableA" type="Marker3D" parent="Spawns"]
+position = Vector3(5, 0, 6)
+rotation = Vector3(0, 0.2, 0)
+script = ExtResource("3_spawn")
+kind = 3
+table = ExtResource("15_breakable_set")
+
+[node name="BreakableB" type="Marker3D" parent="Spawns"]
+position = Vector3(12, 0, 11)
+rotation = Vector3(0, -0.6, 0)
+script = ExtResource("3_spawn")
+kind = 3
+table = ExtResource("15_breakable_set")
+
+[node name="BreakableC" type="Marker3D" parent="Spawns"]
+position = Vector3(15.2, 0, 0.8)
+rotation = Vector3(0, 0.4, 0)
+script = ExtResource("3_spawn")
+kind = 3
+table = ExtResource("15_breakable_set")
+
+[node name="BreakableD" type="Marker3D" parent="Spawns"]
+position = Vector3(0.8, 0, 15.2)
+rotation = Vector3(0, -0.2, 0)
+script = ExtResource("3_spawn")
+kind = 3
+table = ExtResource("15_breakable_set")

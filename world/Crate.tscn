@@ -1,0 +1,61 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://world/Breakable.tscn" id="1_base"]
+[ext_resource type="Resource" path="res://data/tables/drops/drop_crate.tres" id="2_drops"]
+[ext_resource type="Material" path="res://art/materials/wood.tres" id="3_wood"]
+[ext_resource type="Material" path="res://art/materials/wood_dark.tres" id="4_wood_dark"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_crate"]
+material = ExtResource("3_wood")
+size = Vector3(0.8, 0.8, 0.8)
+
+[sub_resource type="BoxMesh" id="BoxMesh_band"]
+material = ExtResource("4_wood_dark")
+size = Vector3(0.83, 0.08, 0.83)
+
+[sub_resource type="BoxMesh" id="BoxMesh_plank"]
+material = ExtResource("3_wood")
+size = Vector3(0.75, 0.06, 0.2)
+
+[sub_resource type="BoxMesh" id="BoxMesh_strip"]
+material = ExtResource("4_wood_dark")
+size = Vector3(0.5, 0.05, 0.08)
+
+[node name="Crate" instance=ExtResource("1_base")]
+drop_table = ExtResource("2_drops")
+
+[node name="Mesh" parent="." index="1"]
+position = Vector3(0, 0.4, 0)
+mesh = SubResource("BoxMesh_crate")
+
+[node name="BandLow" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, -0.3, 0)
+mesh = SubResource("BoxMesh_band")
+
+[node name="BandHigh" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, 0.3, 0)
+mesh = SubResource("BoxMesh_band")
+
+[node name="Plank1" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0, 0.12, 0.28)
+mesh = SubResource("BoxMesh_plank")
+
+[node name="Plank2" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0.28, 0.32, 0)
+rotation = Vector3(0, 1.5708, 0)
+mesh = SubResource("BoxMesh_plank")
+
+[node name="Plank3" type="MeshInstance3D" parent="Debris"]
+position = Vector3(-0.25, 0.5, -0.05)
+rotation = Vector3(0, 1.5708, 0.3)
+mesh = SubResource("BoxMesh_plank")
+
+[node name="Plank4" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0.05, 0.7, -0.27)
+rotation = Vector3(0.2, 0, 0)
+mesh = SubResource("BoxMesh_plank")
+
+[node name="Strip" type="MeshInstance3D" parent="Debris"]
+position = Vector3(-0.1, 0.65, 0.2)
+rotation = Vector3(0, 0.6, 0)
+mesh = SubResource("BoxMesh_strip")

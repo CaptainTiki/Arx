@@ -1,0 +1,182 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://world/chest.gd" id="1_chest"]
+[ext_resource type="Material" path="res://art/materials/wood.tres" id="2_wood"]
+[ext_resource type="Material" path="res://art/materials/wood_dark.tres" id="3_wood_dark"]
+[ext_resource type="Material" path="res://art/materials/steel_dark.tres" id="4_steel_dark"]
+[ext_resource type="Material" path="res://art/materials/steel.tres" id="5_steel"]
+[ext_resource type="AudioStream" path="res://audio/sfx/chest_open.wav" id="6_creak"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_chest"]
+size = Vector3(0.92, 0.56, 0.58)
+
+[sub_resource type="BoxMesh" id="BoxMesh_body"]
+material = ExtResource("2_wood")
+size = Vector3(0.9, 0.42, 0.56)
+
+[sub_resource type="BoxMesh" id="BoxMesh_body_strap"]
+material = ExtResource("4_steel_dark")
+size = Vector3(0.06, 0.43, 0.57)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lock"]
+material = ExtResource("5_steel")
+size = Vector3(0.1, 0.12, 0.02)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lid"]
+material = ExtResource("3_wood_dark")
+size = Vector3(0.92, 0.14, 0.58)
+
+[sub_resource type="BoxMesh" id="BoxMesh_lid_strap"]
+material = ExtResource("4_steel_dark")
+size = Vector3(0.065, 0.15, 0.59)
+
+[sub_resource type="Animation" id="Animation_reset"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Lid:rotation:x")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.0]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Glint:light_energy")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [0.3]
+}
+
+[sub_resource type="Animation" id="Animation_glint"]
+resource_name = "glint"
+length = 2.4
+loop_mode = 1
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Glint:light_energy")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 1.2, 2.4),
+"transitions": PackedFloat32Array(-2, -2, 1),
+"update": 0,
+"values": [0.15, 0.45, 0.15]
+}
+
+[sub_resource type="Animation" id="Animation_open"]
+resource_name = "open"
+length = 0.35
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Lid:rotation:x")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.35),
+"transitions": PackedFloat32Array(0.5, 1),
+"update": 0,
+"values": [0.0, 1.7453]
+}
+tracks/1/type = "value"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Glint:light_energy")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = {
+"times": PackedFloat32Array(0, 0.15),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [0.3, 0.0]
+}
+tracks/2/type = "value"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Glint:visible")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = {
+"times": PackedFloat32Array(0.15),
+"transitions": PackedFloat32Array(1),
+"update": 1,
+"values": [false]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_chest"]
+_data = {
+&"RESET": SubResource("Animation_reset"),
+&"glint": SubResource("Animation_glint"),
+&"open": SubResource("Animation_open")
+}
+
+[node name="Chest" type="StaticBody3D" groups=["interactable"]]
+collision_layer = 9
+collision_mask = 0
+script = ExtResource("1_chest")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+position = Vector3(0, 0.28, 0)
+shape = SubResource("BoxShape3D_chest")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+position = Vector3(0, 0.21, 0)
+mesh = SubResource("BoxMesh_body")
+
+[node name="StrapL" type="MeshInstance3D" parent="Body"]
+position = Vector3(-0.3, 0, 0)
+mesh = SubResource("BoxMesh_body_strap")
+
+[node name="StrapR" type="MeshInstance3D" parent="Body"]
+position = Vector3(0.3, 0, 0)
+mesh = SubResource("BoxMesh_body_strap")
+
+[node name="Lock" type="MeshInstance3D" parent="Body"]
+position = Vector3(0, 0.14, -0.285)
+mesh = SubResource("BoxMesh_lock")
+
+[node name="Lid" type="Node3D" parent="."]
+position = Vector3(0, 0.42, 0.29)
+
+[node name="LidMesh" type="MeshInstance3D" parent="Lid"]
+unique_name_in_owner = true
+position = Vector3(0, 0.07, -0.29)
+mesh = SubResource("BoxMesh_lid")
+
+[node name="StrapL" type="MeshInstance3D" parent="Lid/LidMesh"]
+position = Vector3(-0.3, 0, 0)
+mesh = SubResource("BoxMesh_lid_strap")
+
+[node name="StrapR" type="MeshInstance3D" parent="Lid/LidMesh"]
+position = Vector3(0.3, 0, 0)
+mesh = SubResource("BoxMesh_lid_strap")
+
+[node name="Glint" type="OmniLight3D" parent="."]
+position = Vector3(0, 0.5, -0.45)
+light_color = Color(1, 0.953, 0.769, 1)
+light_energy = 0.3
+omni_range = 1.2
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+unique_name_in_owner = true
+libraries = {
+&"": SubResource("AnimationLibrary_chest")
+}
+autoplay = &"glint"
+
+[node name="OpenSfx" type="AudioStreamPlayer3D" parent="."]
+unique_name_in_owner = true
+position = Vector3(0, 0.45, 0)
+stream = ExtResource("6_creak")
+volume_db = -2.0

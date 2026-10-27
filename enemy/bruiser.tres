@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://enemy/enemy_data.gd" id="1_data"]
 [ext_resource type="Material" path="res://art/materials/hide_bruiser.tres" id="2_hide"]
+[ext_resource type="Resource" path="res://data/tables/drops/drop_bruiser.tres" id="3_drops"]
 
 [resource]
 script = ExtResource("1_data")
@@ -23,6 +24,8 @@ strike_lunge = 0.6
 chase_turn_rate = 460.0
 windup_turn_rate = 90.0
 tell_flash_time = 0.15
+drop_table = ExtResource("3_drops")
+drop_rolls = 2
 flinch_time = 0.3
 flinch_knockback = 2.5
 knockback_decel = 14.0

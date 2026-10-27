@@ -17,10 +17,12 @@ func _ready() -> void:
 	_block_sparks.assign(_block_spark_root.get_children())
 
 
-## Quiet debris where a blade connects, sprayed along the hit direction.
-func play_hit_puff(pos: Vector3, dir: Vector3) -> void:
+## Quiet debris where a blade connects, sprayed along the hit direction. `material` recolours it
+## (fx_dust for a breakable); null = the scene's blood.
+func play_hit_puff(pos: Vector3, dir: Vector3, material: Material = null) -> void:
 	var puff: GPUParticles3D = _hit_puffs[_next_hit_puff]
 	_next_hit_puff = (_next_hit_puff + 1) % _hit_puffs.size()
+	puff.material_override = material
 	puff.global_position = pos
 	# look_at can't build a basis looking straight up or down; keep the last facing then.
 	if dir.length_squared() > 0.0001 and absf(dir.normalized().y) < 0.99:

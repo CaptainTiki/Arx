@@ -78,6 +78,8 @@ const UNREACHABLE: int = 1 << 20
 @export var player: Player
 ## Instantiated for WEAPON spawn points.
 @export var pickup_scene: PackedScene
+## Instantiated for CHEST spawn points; the rolled row's ChestData goes on it.
+@export var chest_scene: PackedScene
 ## Instantiated for ENEMY rows rolled from a table; the row's EnemyData is set on it.
 @export var enemy_scene: PackedScene
 ## Print every spawn decision after the seed line, e.g. "room 4 (CombatRoom_B) spawn 1 → skitterer".
@@ -118,7 +120,7 @@ func generate(forced_seed: int = 0) -> void:
 	_clear()
 	# The same RNG carries on from planning into the spawn rolls, so the seed fixes both.
 	_build(plan, rng)
-	dungeon.set_plan(plan)
+	dungeon.set_plan(plan, last_seed)
 
 
 ## Pure layout for one seed: no nodes are placed. Empty if the main path boxed itself in.
@@ -979,24 +981,40 @@ func _spawn(spawn: SpawnPoint, rng: RandomNumberGenerator) -> String:
 		var entry: SpawnEntry = spawn.table.roll(rng)
 		if entry == null or entry.payload_for(spawn.kind) == null:
 			return "nothing"
-		if spawn.kind == SpawnPoint.Kind.ENEMY:
-			var rolled: Enemy = enemy_scene.instantiate() as Enemy
-			rolled.data = entry.enemy
-			rolled.dungeon = dungeon
-			rolled.transform = local
-			spawned.add_child(rolled)
-		else:
-			_place_pickup(local, entry.item)
+		match spawn.kind:
+			SpawnPoint.Kind.ENEMY:
+				var rolled: Enemy = enemy_scene.instantiate() as Enemy
+				rolled.data = entry.enemy
+				rolled.dungeon = dungeon
+				rolled.transform = local
+				spawned.add_child(rolled)
+			SpawnPoint.Kind.BREAKABLE:
+				_place_breakable(local, entry.scene)
+			SpawnPoint.Kind.CHEST:
+				var chest: Chest = chest_scene.instantiate() as Chest
+				chest.data = entry.chest
+				chest.dungeon = dungeon
+				chest.transform = local
+				spawned.add_child(chest)
+			_:
+				_place_pickup(local, entry.item)
 		return entry.describe(spawn.kind)
-	if spawn.kind == SpawnPoint.Kind.ENEMY:
-		var enemy: Node3D = spawn.fixed_scene.instantiate() as Node3D
-		if enemy is Enemy:
-			(enemy as Enemy).dungeon = dungeon
-		enemy.transform = local
-		spawned.add_child(enemy)
-		return "fixed %s" % spawn.fixed_scene.resource_path.get_file().get_basename()
-	_place_pickup(local, spawn.fixed_item)
-	return "fixed %s" % spawn.fixed_item.display_name.to_lower()
+	match spawn.kind:
+		SpawnPoint.Kind.ENEMY:
+			var enemy: Node3D = spawn.fixed_scene.instantiate() as Node3D
+			if enemy is Enemy:
+				(enemy as Enemy).dungeon = dungeon
+			enemy.transform = local
+			spawned.add_child(enemy)
+		SpawnPoint.Kind.BREAKABLE:
+			_place_breakable(local, spawn.fixed_scene)
+		SpawnPoint.Kind.CHEST:
+			# No fallback: a chest needs a table (the room's authoring check says so).
+			return "nothing"
+		_:
+			_place_pickup(local, spawn.fixed_item)
+			return "fixed %s" % spawn.fixed_item.display_name.to_lower()
+	return "fixed %s" % spawn.fixed_scene.resource_path.get_file().get_basename()
 
 
 func _place_pickup(local: Transform3D, item: ItemData) -> void:
@@ -1004,6 +1022,14 @@ func _place_pickup(local: Transform3D, item: ItemData) -> void:
 	pickup.transform = local
 	spawned.add_child(pickup)
 	pickup.set_item(item)
+
+
+func _place_breakable(local: Transform3D, scene: PackedScene) -> void:
+	var breakable: Node3D = scene.instantiate() as Node3D
+	if breakable is Breakable:
+		(breakable as Breakable).dungeon = dungeon
+	breakable.transform = local
+	spawned.add_child(breakable)
 
 
 ## One catalog room's metadata, read once from an off-tree instance.

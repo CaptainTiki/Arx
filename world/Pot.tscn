@@ -1,0 +1,91 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://world/Breakable.tscn" id="1_base"]
+[ext_resource type="Resource" path="res://data/tables/drops/drop_pot.tres" id="2_drops"]
+[ext_resource type="Material" path="res://art/materials/clay.tres" id="3_clay"]
+[ext_resource type="Material" path="res://art/materials/clay_dark.tres" id="4_clay_dark"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_pot"]
+size = Vector3(0.5, 0.8, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_body"]
+material = ExtResource("3_clay")
+size = Vector3(0.5, 0.36, 0.5)
+
+[sub_resource type="BoxMesh" id="BoxMesh_base"]
+material = ExtResource("4_clay_dark")
+size = Vector3(0.36, 0.2, 0.36)
+
+[sub_resource type="BoxMesh" id="BoxMesh_shoulder"]
+material = ExtResource("3_clay")
+size = Vector3(0.4, 0.08, 0.4)
+
+[sub_resource type="BoxMesh" id="BoxMesh_neck"]
+material = ExtResource("3_clay")
+size = Vector3(0.22, 0.1, 0.22)
+
+[sub_resource type="BoxMesh" id="BoxMesh_rim"]
+material = ExtResource("4_clay_dark")
+size = Vector3(0.3, 0.05, 0.3)
+
+[sub_resource type="BoxMesh" id="BoxMesh_shard_big"]
+material = ExtResource("3_clay")
+size = Vector3(0.22, 0.04, 0.16)
+
+[sub_resource type="BoxMesh" id="BoxMesh_shard"]
+material = ExtResource("3_clay")
+size = Vector3(0.16, 0.04, 0.18)
+
+[sub_resource type="BoxMesh" id="BoxMesh_shard_dark"]
+material = ExtResource("4_clay_dark")
+size = Vector3(0.18, 0.04, 0.1)
+
+[node name="Pot" instance=ExtResource("1_base")]
+drop_table = ExtResource("2_drops")
+
+[node name="CollisionShape3D" parent="." index="0"]
+shape = SubResource("BoxShape3D_pot")
+
+[node name="Mesh" parent="." index="1"]
+position = Vector3(0, 0.38, 0)
+mesh = SubResource("BoxMesh_body")
+
+[node name="Base" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, -0.28, 0)
+mesh = SubResource("BoxMesh_base")
+
+[node name="Shoulder" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, 0.22, 0)
+mesh = SubResource("BoxMesh_shoulder")
+
+[node name="Neck" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, 0.31, 0)
+mesh = SubResource("BoxMesh_neck")
+
+[node name="Rim" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, 0.385, 0)
+mesh = SubResource("BoxMesh_rim")
+
+[node name="Shard1" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0.15, 0.3, 0.12)
+rotation = Vector3(0, 0.5, 0)
+mesh = SubResource("BoxMesh_shard_big")
+
+[node name="Shard2" type="MeshInstance3D" parent="Debris"]
+position = Vector3(-0.16, 0.42, 0.05)
+rotation = Vector3(0, -0.4, 0.25)
+mesh = SubResource("BoxMesh_shard")
+
+[node name="Shard3" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0.02, 0.5, -0.18)
+rotation = Vector3(0.3, 1.2, 0)
+mesh = SubResource("BoxMesh_shard_big")
+
+[node name="Shard4" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0, 0.1, 0)
+mesh = SubResource("BoxMesh_shard_dark")
+
+[node name="RimShard" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0.05, 0.76, 0.1)
+rotation = Vector3(0, 0.9, 0)
+mesh = SubResource("BoxMesh_shard_dark")

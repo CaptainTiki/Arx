@@ -108,6 +108,11 @@ enum Behavior { MELEE, POUNCE, CHARGE }
 ## Radius of the roar at charge windup.
 @export var roar_noise_radius: float = 12.0
 
+@export_group("Loot")
+## Rolled drop_rolls times where it dies (Dungeon.drop_loot). Null = drops nothing.
+@export var drop_table: SpawnTable
+@export var drop_rolls: int = 1
+
 @export_group("Reactions")
 @export var flinch_time: float = 0.3
 ## Push speed on flinch, m/s, along the hit direction.

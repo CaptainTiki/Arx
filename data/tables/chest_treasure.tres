@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="SpawnTable" format=3]
+
+[ext_resource type="Script" path="res://dungeon/spawn_table.gd" id="1_table"]
+[ext_resource type="Script" path="res://dungeon/spawn_entry.gd" id="2_entry"]
+[ext_resource type="Resource" path="res://items/chests/chest_common.tres" id="3_common"]
+[ext_resource type="Resource" path="res://items/chests/chest_rich.tres" id="4_rich"]
+
+[sub_resource type="Resource" id="Entry_common"]
+script = ExtResource("2_entry")
+weight = 3.0
+chest = ExtResource("3_common")
+
+[sub_resource type="Resource" id="Entry_rich"]
+script = ExtResource("2_entry")
+weight = 1.0
+chest = ExtResource("4_rich")
+
+[resource]
+script = ExtResource("1_table")
+entries = Array[ExtResource("2_entry")]([SubResource("Entry_common"), SubResource("Entry_rich")])

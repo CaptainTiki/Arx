@@ -20,17 +20,8 @@ extends CharacterBody3D
 @export var noise_drop: float = 4.0
 
 @export_group("Dropping")
-## What a dropped item becomes. Same scene the generator uses for loot.
-@export var pickup_scene: PackedScene
-## Dropped pickups are added here (Dungeon/Spawned in Main, so they're cleared on regenerate).
-@export var drop_parent: Node3D
-## How far ahead of your feet a dropped item lands.
+## How far ahead of your feet a dropped item lands. The pickup itself is Dungeon.place_item()'s.
 @export var drop_distance: float = 1.0
-## Height of the ray that keeps a drop from landing inside a wall.
-@export var drop_probe_height: float = 0.5
-## How far a drop is pulled back from a wall the ray hits.
-@export var drop_wall_margin: float = 0.4
-@export_flags_3d_physics var drop_wall_mask: int = 1
 
 @export_group("Movement")
 @export var walk_speed: float = 5.0
@@ -159,25 +150,14 @@ func apply_lunge(distance: float, duration: float) -> void:
 	_lunge_time = 0.0
 
 
-## Puts `item` on the floor about drop_distance ahead as a new Pickup, pulled back from any wall
-## in the way so it can always be picked up again.
+## Puts `item` on the floor about drop_distance ahead as a new Pickup (Dungeon.place_item(), which
+## keeps it out of walls). Without a Dungeon there's nowhere to put it, so nothing happens.
 func drop_item(item: ItemData) -> void:
-	if item == null or pickup_scene == null or drop_parent == null:
+	if item == null or dungeon == null:
 		return
 	var forward: Vector3 = -global_basis.z
 	forward.y = 0.0
-	forward = forward.normalized()
-	var probe_from: Vector3 = global_position + Vector3.UP * drop_probe_height
-	var landing: Vector3 = probe_from + forward * drop_distance
-	var query: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(probe_from, landing, drop_wall_mask, [get_rid()])
-	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty():
-		landing = (hit["position"] as Vector3) - forward * drop_wall_margin
-	var pickup: Pickup = pickup_scene.instantiate() as Pickup
-	pickup.position = drop_parent.to_local(Vector3(landing.x, global_position.y, landing.z))
-	pickup.rotation.y = rotation.y
-	drop_parent.add_child(pickup)
-	pickup.set_item(item)
+	dungeon.place_item(item, global_position, forward.normalized() * drop_distance, rotation.y)
 	make_noise(noise_drop)
 
 

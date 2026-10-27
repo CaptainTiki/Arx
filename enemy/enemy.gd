@@ -568,7 +568,10 @@ func _on_health_changed(current: int, maximum: int) -> void:
 	_hp_bar.value = current
 
 
+## Loot first, where the body falls, so the drop and the corpse share a spot.
 func _on_died() -> void:
+	if dungeon and data.drop_table:
+		dungeon.drop_loot(data.drop_table, global_position, null, data.drop_rolls, data.display_name.to_lower())
 	_enter(State.DEAD)
 
 

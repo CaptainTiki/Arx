@@ -1,0 +1,56 @@
+[gd_resource type="Resource" script_class="SpawnTable" format=3]
+
+[ext_resource type="Script" path="res://dungeon/spawn_table.gd" id="1_table"]
+[ext_resource type="Script" path="res://dungeon/spawn_entry.gd" id="2_entry"]
+[ext_resource type="Resource" path="res://weapons/rusty_sword.tres" id="3_sword"]
+[ext_resource type="Resource" path="res://weapons/woodcutters_axe.tres" id="4_axe"]
+[ext_resource type="Resource" path="res://weapons/rusted_dagger.tres" id="5_dagger"]
+[ext_resource type="Resource" path="res://items/armor/rawhide_cap.tres" id="6_cap"]
+[ext_resource type="Resource" path="res://items/armor/rawhide_vest.tres" id="7_vest"]
+[ext_resource type="Resource" path="res://items/armor/rawhide_gloves.tres" id="8_gloves"]
+[ext_resource type="Resource" path="res://items/armor/rawhide_boots.tres" id="9_boots"]
+[ext_resource type="Resource" path="res://items/armor/iron_cap.tres" id="10_iron_cap"]
+
+[sub_resource type="Resource" id="Entry_sword"]
+script = ExtResource("2_entry")
+weight = 2.0
+item = ExtResource("3_sword")
+
+[sub_resource type="Resource" id="Entry_axe"]
+script = ExtResource("2_entry")
+weight = 2.0
+item = ExtResource("4_axe")
+
+[sub_resource type="Resource" id="Entry_dagger"]
+script = ExtResource("2_entry")
+weight = 2.0
+item = ExtResource("5_dagger")
+
+[sub_resource type="Resource" id="Entry_cap"]
+script = ExtResource("2_entry")
+weight = 1.0
+item = ExtResource("6_cap")
+
+[sub_resource type="Resource" id="Entry_vest"]
+script = ExtResource("2_entry")
+weight = 1.0
+item = ExtResource("7_vest")
+
+[sub_resource type="Resource" id="Entry_gloves"]
+script = ExtResource("2_entry")
+weight = 1.0
+item = ExtResource("8_gloves")
+
+[sub_resource type="Resource" id="Entry_boots"]
+script = ExtResource("2_entry")
+weight = 1.0
+item = ExtResource("9_boots")
+
+[sub_resource type="Resource" id="Entry_iron_cap"]
+script = ExtResource("2_entry")
+weight = 1.0
+item = ExtResource("10_iron_cap")
+
+[resource]
+script = ExtResource("1_table")
+entries = Array[ExtResource("2_entry")]([SubResource("Entry_sword"), SubResource("Entry_axe"), SubResource("Entry_dagger"), SubResource("Entry_cap"), SubResource("Entry_vest"), SubResource("Entry_gloves"), SubResource("Entry_boots"), SubResource("Entry_iron_cap")])

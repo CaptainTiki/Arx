@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://enemy/enemy_data.gd" id="1_data"]
 [ext_resource type="Material" path="res://art/materials/hide_skitterer.tres" id="2_hide"]
+[ext_resource type="Resource" path="res://data/tables/drops/drop_skitterer.tres" id="3_drops"]
 
 [resource]
 script = ExtResource("1_data")
@@ -23,6 +24,7 @@ strike_lunge = 1.3
 chase_turn_rate = 460.0
 windup_turn_rate = 360.0
 tell_flash_time = 0.15
+drop_table = ExtResource("3_drops")
 flinch_time = 0.3
 flinch_knockback = 2.5
 knockback_decel = 14.0

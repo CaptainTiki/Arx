@@ -129,15 +129,15 @@ position = Vector3(0, 0, 4.6)
 rotation = Vector3(0, 1.3963, 0)
 item = ExtResource("11_sword")
 
-[node name="Dungeon" type="Node3D" parent="."]
+[node name="Dungeon" type="Node3D" parent="." node_paths=PackedStringArray("drop_parent")]
 script = ExtResource("14_dungeon")
+pickup_scene = ExtResource("10_pickup")
+drop_parent = NodePath("../Pickups")
 
-[node name="Player" parent="." node_paths=PackedStringArray("fx", "dungeon", "drop_parent") instance=ExtResource("5_player")]
+[node name="Player" parent="." node_paths=PackedStringArray("fx", "dungeon") instance=ExtResource("5_player")]
 position = Vector3(0, 0, 3)
 fx = NodePath("../FX")
-pickup_scene = ExtResource("10_pickup")
 dungeon = NodePath("../Dungeon")
-drop_parent = NodePath("../Pickups")
 
 [node name="Enemy" parent="." node_paths=PackedStringArray("target", "dungeon") instance=ExtResource("6_enemy")]
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -2)

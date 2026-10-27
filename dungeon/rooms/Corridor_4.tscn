@@ -7,7 +7,8 @@
 [ext_resource type="Material" path="res://art/materials/stone_wall.tres" id="5_wall"]
 [ext_resource type="Material" path="res://art/materials/stone_ceiling.tres" id="6_ceiling"]
 [ext_resource type="PackedScene" path="res://world/Torch.tscn" id="7_torch"]
-[ext_resource type="Resource" path="res://data/tables/combat_weapon.tres" id="8_combat_weapon"]
+[ext_resource type="Resource" path="res://data/tables/chest_roll.tres" id="8_chest_roll"]
+[ext_resource type="Resource" path="res://data/tables/breakable_set.tres" id="9_breakable_set"]
 
 [node name="Corridor_4" type="Node3D"]
 script = ExtResource("1_room")
@@ -96,8 +97,23 @@ dir = 2
 
 [node name="Spawns" type="Node3D" parent="."]
 
-[node name="CubbyWeapon" type="Marker3D" parent="Spawns"]
+[node name="CubbyChest" type="Marker3D" parent="Spawns"]
 position = Vector3(3, 0, 8)
+rotation = Vector3(0, 1.5708, 0)
 script = ExtResource("3_spawn")
-kind = 1
-table = ExtResource("8_combat_weapon")
+kind = 4
+table = ExtResource("8_chest_roll")
+
+[node name="BreakableA" type="Marker3D" parent="Spawns"]
+position = Vector3(3.2, 0, 2.5)
+rotation = Vector3(0, 0.3, 0)
+script = ExtResource("3_spawn")
+kind = 3
+table = ExtResource("9_breakable_set")
+
+[node name="BreakableB" type="Marker3D" parent="Spawns"]
+position = Vector3(0.8, 0, 13.5)
+rotation = Vector3(0, -0.4, 0)
+script = ExtResource("3_spawn")
+kind = 3
+table = ExtResource("9_breakable_set")

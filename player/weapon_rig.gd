@@ -190,10 +190,11 @@ func _on_hit_landed(target: Node3D) -> void:
 	target.call(&"take_hit", hit)
 	_landed_this_swing = true
 	_whoosh_sfx.stop()
-	_impact_sfx.play()
+	if not hit.muffle_thud:
+		_impact_sfx.play()
 	_player.make_noise(_player.noise_sword_hit)
 	if _player.fx:
-		_player.fx.play_hit_puff(contact, hit.direction)
+		_player.fx.play_hit_puff(contact, hit.direction, hit.puff_material)
 	kick(hit_kick_deg)
 	_hitstop(weapon.hitstop)
 

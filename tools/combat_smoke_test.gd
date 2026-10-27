@@ -12,6 +12,10 @@ extends SceneTree
 ## charge (connects + slows, blocked, wall stun punished).
 ## Part D (fresh scene): perception and noise. Cone, pillar LOS, lose sight -> SEARCH -> home,
 ## sneak hit alerting a neighbour, walking silent vs sprinting heard.
+## Part E (fresh scene): loot sources. A crate shatters like a hit (dust puffs, a crack instead of
+## the thud, kick, hitstop, collider off, debris flung away from the swing, its loot on the floor,
+## gone once the pieces are); a chest ignores E while blocking, opens once, spills in front of
+## itself and stays; a bruiser drops twice where it dies; loot dropped against a wall stays out of it.
 ## Run from the project root:
 ##   godot --headless --path . --script res://tools/combat_smoke_test.gd
 
@@ -56,6 +60,13 @@ func _run() -> void:
 	await process_frame
 	await _seconds(0.5)
 	await _part_perception(current_scene)
+
+	print("== reloading for part E")
+	reload_current_scene()
+	await process_frame
+	await process_frame
+	await _seconds(0.5)
+	await _part_loot(current_scene)
 
 	# Let in-flight SFX finish so the audio server releases them before shutdown.
 	await _seconds(1.0)
@@ -624,6 +635,166 @@ func _part_perception(main: Node) -> void:
 
 
 ## A fresh enemy of `data_path` at `at`, facing `yaw`, wired to the arena's Dungeon for noise.
+func _part_loot(main: Node) -> void:
+	var player: Player = main.get_node("Player") as Player
+	var rig: WeaponRig = player.get_node("%WeaponRig") as WeaponRig
+	var hud: Hud = player.get_node("%HUD") as Hud
+	var camera: Camera3D = player.get_node("%Camera3D") as Camera3D
+	var thud: AudioStreamPlayer = player.get_node("%ImpactSfx") as AudioStreamPlayer
+	var dungeon: Dungeon = main.get_node("Dungeon") as Dungeon
+	var drops: Node3D = main.get_node("Pickups") as Node3D
+	var dagger: ItemData = load("res://weapons/rusted_dagger.tres") as ItemData
+	var axe: ItemData = load("res://weapons/woodcutters_axe.tres") as ItemData
+	var sword: ItemData = load("res://weapons/rusty_sword.tres") as ItemData
+	(main.get_node("Enemy") as Node).queue_free()
+	for pickup: Node in drops.get_children():
+		pickup.queue_free()
+	await process_frame
+
+	print("-- a crate shatters like a hit, not a deletion")
+	var crate: Breakable = (load("res://world/Crate.tscn") as PackedScene).instantiate() as Breakable
+	crate.drop_table = _one_row_table(dagger)
+	crate.dungeon = dungeon
+	crate.position = Vector3(0.0, 0.0, -1.5)
+	main.add_child(crate)
+	player.place_at(Transform3D(Basis.IDENTITY, Vector3(0.0, 0.0, -0.2)))
+	# Look down at it, as you would: the hitbox hangs off the camera, and level it passes over a crate.
+	_aim_at(player, crate.global_position + Vector3(0.0, 0.4, 0.0))
+	await _physics_frames(2)
+	var pieces: Array[Node3D] = []
+	pieces.assign(crate.get_node("Debris").get_children())
+	var starts: Array[Vector3] = []
+	for piece: Node3D in pieces:
+		starts.append(piece.global_position)
+	var swing_dir: Vector3 = _flat(crate.global_position - player.global_position).normalized()
+	# The scene's opening equip raise may still be running; a swing only starts from rest.
+	await _wait_until(func() -> bool: return rig.can_interact(), 1.5)
+	_check(rig.try_swing(), "swing started")
+	# Process frames, not physics: the hitstop slows physics ticks, and we want to look inside it.
+	var deadline: float = _now() + 1.0
+	while not crate.is_broken() and _now() < deadline:
+		await process_frame
+	var in_hitstop: bool = Engine.time_scale < 1.0
+	var cracked: bool = (crate.get_node("%BreakSfx") as AudioStreamPlayer3D).playing and not thud.playing
+	var dust: int = 0
+	for puff: Node in main.get_node("FX/HitPuffs").get_children():
+		if (puff as GPUParticles3D).material_override == crate.dust_material:
+			dust += 1
+	_check(crate.is_broken() and in_hitstop, "one sword hit broke it, inside the hitstop (time_scale %.2f)" % Engine.time_scale)
+	_check(cracked, "a crack, not the sword's thud")
+	_check(dust >= 2, "dust, not blood: the swing's puff and the burst (%d dust puffs)" % dust)
+	await _seconds(0.03)
+	_check(camera.rotation.z < 0.0, "camera kicked with the hit's roll (%.1f deg)" % rad_to_deg(camera.rotation.z))
+	await _physics_frames(2)
+	var shape: CollisionShape3D = crate.get_node("%CollisionShape3D") as CollisionShape3D
+	_check(shape.disabled and not (crate.get_node("%Mesh") as Node3D).visible, "collider off and the intact mesh gone at once")
+	await _seconds(crate.fling_time + 0.3)
+	var away: int = 0
+	var grounded: int = 0
+	for i: int in pieces.size():
+		if _flat(pieces[i].global_position - starts[i]).dot(swing_dir) > 0.2:
+			away += 1
+		if pieces[i].global_position.y < 0.1:
+			grounded += 1
+	_check(away == pieces.size() and grounded == pieces.size(), "all %d pieces flew away from the swing and landed (%d away, %d on the floor)" % [pieces.size(), away, grounded])
+	var loot: Pickup = drops.get_child(drops.get_child_count() - 1) as Pickup if drops.get_child_count() > 0 else null
+	var loot_gap: float = _flat(loot.global_position - crate.global_position).length() if loot else -1.0
+	_check(drops.get_child_count() == 1 and loot.item == dagger and loot_gap <= dungeon.drop_scatter_max + 0.01 and is_zero_approx(loot.global_position.y),
+		"its loot is on the floor %.2f m from where it stood" % loot_gap)
+	_check(not dungeon.drop_log.is_empty() and dungeon.drop_log[-1] == "drop: crate → rusted dagger @ room ?", "drop log: '%s'" % (dungeon.drop_log[-1] if not dungeon.drop_log.is_empty() else ""))
+	await _seconds(crate.debris_linger + crate.debris_fade_time + 0.3)
+	_check(not is_instance_valid(crate), "the crate frees itself once the pieces have shrunk away")
+
+	print("-- a chest opens once, not mid-block, and spills in front of itself")
+	var chest_data: ChestData = ChestData.new()
+	chest_data.drop_table = _one_row_table(axe)
+	chest_data.drop_rolls_min = 2
+	chest_data.drop_rolls_max = 2
+	var chest: Chest = (load("res://world/Chest.tscn") as PackedScene).instantiate() as Chest
+	chest.data = chest_data
+	chest.dungeon = dungeon
+	chest.position = Vector3(-2.5, 0.0, -3.0)
+	# Front is -Z: turned round, it faces +Z, toward where you stand.
+	chest.rotation.y = PI
+	main.add_child(chest)
+	var before: int = drops.get_child_count()
+	player.place_at(Transform3D(Basis.IDENTITY, Vector3(-2.5, 0.0, -1.4)))
+	_aim_at(player, chest.global_position + Vector3(0.0, 0.3, 0.0))
+	await _wait_until(func() -> bool: return hud.prompt_text_shown() != "", 1.0)
+	_check(hud.prompt_text_shown() == "[E] Open Chest", "prompt shows '%s'" % hud.prompt_text_shown())
+	Input.action_press(&"block")
+	await _physics_frames(3)
+	_tap(&"interact")
+	await _physics_frames(3)
+	_check(not chest.opened and hud.prompt_text_shown() == "", "prompt hidden and E ignored while blocking")
+	Input.action_release(&"block")
+	await _physics_frames(3)
+	_tap(&"interact")
+	await _wait_until(func() -> bool: return chest.opened, 1.0)
+	var creak: bool = (chest.get_node("%OpenSfx") as AudioStreamPlayer3D).playing
+	_check(chest.opened and creak and drops.get_child_count() == before, "E opens it with a creak; nothing on the floor while the lid is still moving")
+	await _wait_until(func() -> bool: return drops.get_child_count() >= before + 2, 1.5)
+	var lid_deg: float = rad_to_deg((chest.get_node("Lid") as Node3D).rotation.x)
+	_check(absf(lid_deg - 100.0) < 1.0 and not (chest.get_node("Glint") as Node3D).visible, "lid up %.0f deg, glint out" % lid_deg)
+	var front: Vector3 = -chest.global_basis.z
+	var spill_at: Vector3 = chest.global_position + front * chest.spill_distance
+	var in_front: int = 0
+	for i: int in range(before, drops.get_child_count()):
+		var spilled: Pickup = drops.get_child(i) as Pickup
+		if spilled.item == axe and _flat(spilled.global_position - chest.global_position).dot(front) > 0.29 \
+				and _flat(spilled.global_position - spill_at).length() <= dungeon.drop_scatter_max + 0.01:
+			in_front += 1
+	_check(drops.get_child_count() == before + 2 and in_front == 2, "both rolls spilled in front of it (%d of %d)" % [in_front, drops.get_child_count() - before])
+	await _physics_frames(3)
+	_check(hud.prompt_text_shown() == "", "an open chest has no prompt")
+	_tap(&"interact")
+	await _seconds(0.6)
+	_check(drops.get_child_count() == before + 2 and is_instance_valid(chest), "E again does nothing; the chest stays, open")
+
+	print("-- an enemy drops where it falls")
+	var bruiser: EnemyData = (load("res://enemy/bruiser.tres") as EnemyData).duplicate() as EnemyData
+	bruiser.drop_table = _one_row_table(sword)
+	var victim: Enemy = (load("res://enemy/Enemy.tscn") as PackedScene).instantiate() as Enemy
+	victim.data = bruiser
+	victim.dungeon = dungeon
+	victim.position = Vector3(2.0, 0.0, -4.0)
+	main.add_child(victim)
+	await process_frame
+	before = drops.get_child_count()
+	var died_at: Vector3 = victim.global_position
+	victim.take_hit(HitInfo.new(10000, player, Vector3.FORWARD, true))
+	var near: int = 0
+	for i: int in range(before, drops.get_child_count()):
+		var dropped: Pickup = drops.get_child(i) as Pickup
+		if dropped.item == sword and _flat(dropped.global_position - died_at).length() <= dungeon.drop_scatter_max + 0.01:
+			near += 1
+	_check(victim.is_dead() and near == 2, "a bruiser rolls %d times: %d swords at its feet" % [bruiser.drop_rolls, near])
+	_check(dungeon.drop_log.slice(-2) == PackedStringArray(["drop: bruiser → rusty sword @ room ?", "drop: bruiser → rusty sword @ room ?"]), "drop log names the bruiser")
+	await _seconds(bruiser.despawn_delay + 0.3)
+	_check(not is_instance_valid(victim) and drops.get_child_count() == before + 2, "the corpse despawns; its loot stays")
+
+	print("-- loot dropped against a wall stays out of it")
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	rng.seed = 7
+	# 0.15 m off the west wall's face (x = -6): without the pull-back, about half would land inside it.
+	before = drops.get_child_count()
+	var wall_drops: Array[ItemData] = dungeon.drop_loot(_one_row_table(dagger), Vector3(-5.85, 0.0, 2.0), rng, 12)
+	var inside: int = 0
+	for i: int in range(before, drops.get_child_count()):
+		if (drops.get_child(i) as Node3D).global_position.x > -6.0:
+			inside += 1
+	_check(wall_drops.size() == 12 and inside == 12, "%d of %d stayed in the room" % [inside, wall_drops.size()])
+
+
+## A table that always rolls `item`.
+func _one_row_table(item: ItemData) -> SpawnTable:
+	var entry: SpawnEntry = SpawnEntry.new()
+	entry.item = item
+	var table: SpawnTable = SpawnTable.new()
+	table.entries.append(entry)
+	return table
+
+
 func _spawn_enemy(main: Node, data_path: String, at: Vector3, yaw: float) -> Enemy:
 	var enemy: Enemy = (load("res://enemy/Enemy.tscn") as PackedScene).instantiate() as Enemy
 	enemy.data = load(data_path) as EnemyData

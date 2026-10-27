@@ -42,6 +42,9 @@ func _initialize() -> void:
 	_write_wav("res://audio/sfx/enemy_bark.wav", _voice(0.3, 105.0, 120.0, 175.0, 720.0, 1250.0, 0.2))
 	_write_wav("res://audio/sfx/enemy_chitter.wav", _chitter())
 	_write_wav("res://audio/sfx/enemy_roar.wav", _roar())
+	# Step 10. New sounds go last so the shared RNG still gives every older one the same samples.
+	_write_wav("res://audio/sfx/break_crack.wav", _crack())
+	_write_wav("res://audio/sfx/chest_open.wav", _creak())
 	_write_weapons()
 	_write_armor()
 	print("Placeholder assets written.")
@@ -228,6 +231,73 @@ func _roar() -> PackedFloat32Array:
 		var env: float = smoothstep(0.0, 0.12, t) * (1.0 - smoothstep(0.7, 1.0, t))
 		out[i] = tanh((band_a + band_b * 0.5) * env * 2.0)
 	return _normalized(out, 0.85)
+
+
+## A breakable giving way: a hard bright snap, a few splintering clicks after it, and a short hollow
+## wooden knock under the lot. Sharp at the front so it reads as a crack, not the sword's thud.
+func _crack() -> PackedFloat32Array:
+	var length: float = 0.42
+	var count: int = int(length * SAMPLE_RATE)
+	var out: PackedFloat32Array = PackedFloat32Array()
+	out.resize(count)
+	var clicks: Array[float] = [0.0]
+	var t_click: float = 0.012
+	while t_click < 0.2:
+		clicks.append(t_click)
+		t_click += _rng.randf_range(0.012, 0.035)
+	var prev: float = 0.0
+	var low: float = 0.0
+	var band: float = 0.0
+	var f: float = 2.0 * sin(PI * 260.0 / SAMPLE_RATE)
+	for i: int in count:
+		var t: float = float(i) / SAMPLE_RATE
+		var noise: float = _rng.randf_range(-1.0, 1.0)
+		var excite: float = 0.0
+		for k: int in clicks.size():
+			var age: float = t - clicks[k]
+			if age >= 0.0:
+				excite += noise * exp(-age * (260.0 if k == 0 else 600.0)) * (1.0 if k == 0 else 0.55 * exp(-clicks[k] * 9.0))
+		# First difference = a crude high-pass: keeps the snap bright.
+		var bright: float = excite - prev * 0.85
+		prev = excite
+		low += f * band
+		band += f * (excite * 0.6 - low - 0.25 * band)
+		out[i] = tanh((bright * 0.8 + band * 1.4) * 1.5) * (1.0 - smoothstep(0.75, 1.0, t / length))
+	return _normalized(out, 0.85)
+
+
+## A lid on old hinges: a stick-slip creak (a slowly rising train of rough pulses through a woody
+## band-pass) and a soft knock as it comes to rest.
+func _creak() -> PackedFloat32Array:
+	var length: float = 0.55
+	var count: int = int(length * SAMPLE_RATE)
+	var out: PackedFloat32Array = PackedFloat32Array()
+	out.resize(count)
+	var low: float = 0.0
+	var band: float = 0.0
+	var f: float = 2.0 * sin(PI * 900.0 / SAMPLE_RATE)
+	var next_pulse: float = 0.0
+	var pulse_start: float = -1.0
+	var knock_phase: float = 0.0
+	var knock_at: float = 0.36
+	for i: int in count:
+		var t: float = float(i) / SAMPLE_RATE
+		var creaking: bool = t < 0.33
+		if creaking and t >= next_pulse:
+			pulse_start = t
+			next_pulse = t + lerpf(1.0 / 70.0, 1.0 / 140.0, t / 0.33) * _rng.randf_range(0.8, 1.25)
+		var age: float = t - pulse_start
+		var excite: float = (_rng.randf_range(-1.0, 1.0) * 0.4 + 1.0) * exp(-age * 400.0) if creaking else 0.0
+		low += f * band
+		band += f * (excite - low - 0.12 * band)
+		var creak_env: float = smoothstep(0.0, 0.05, t) * (1.0 - smoothstep(0.26, 0.33, t))
+		var knock: float = 0.0
+		if t >= knock_at:
+			var k_age: float = t - knock_at
+			knock_phase += TAU * (110.0 + 60.0 * exp(-k_age * 40.0)) / SAMPLE_RATE
+			knock = sin(knock_phase) * exp(-k_age * 30.0) * 0.9
+		out[i] = band * creak_env * 0.6 + knock
+	return _normalized(out, 0.7)
 
 
 ## Two descending, low, slightly square blips: a dull "nope".

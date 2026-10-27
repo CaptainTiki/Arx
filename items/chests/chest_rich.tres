@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="ChestData" format=3]
+
+[ext_resource type="Script" path="res://items/chest_data.gd" id="1_chest"]
+[ext_resource type="Resource" path="res://data/tables/drops/drop_chest_rich.tres" id="2_drops"]
+
+[resource]
+script = ExtResource("1_chest")
+display_name = "Chest"
+drop_table = ExtResource("2_drops")
+drop_rolls_min = 2
+drop_rolls_max = 3

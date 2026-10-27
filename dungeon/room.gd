@@ -94,10 +94,12 @@ func get_authoring_problems() -> PackedStringArray:
 			players += 1
 		elif spawn.table:
 			problems.append_array(_table_problems(spawn))
-		elif spawn.kind == SpawnPoint.Kind.ENEMY and spawn.fixed_scene == null:
-			problems.append("ENEMY SpawnPoint '%s' has neither a table nor a fixed_scene." % spawn.name)
+		elif (spawn.kind == SpawnPoint.Kind.ENEMY or spawn.kind == SpawnPoint.Kind.BREAKABLE) and spawn.fixed_scene == null:
+			problems.append("%s SpawnPoint '%s' has neither a table nor a fixed_scene." % [SpawnPoint.Kind.keys()[spawn.kind], spawn.name])
 		elif spawn.kind == SpawnPoint.Kind.WEAPON and spawn.fixed_item == null:
 			problems.append("WEAPON SpawnPoint '%s' has neither a table nor a fixed_item." % spawn.name)
+		elif spawn.kind == SpawnPoint.Kind.CHEST:
+			problems.append("CHEST SpawnPoint '%s' has no table (chests have no fixed fallback)." % spawn.name)
 	if type == Type.START and players != 1:
 		problems.append("START rooms need exactly one PLAYER SpawnPoint (found %d)." % players)
 	return problems
@@ -125,19 +127,19 @@ static func owning_room(node: Node) -> Room:
 	return parent as Room
 
 
-## A table on an ENEMY point should only carry enemies, and one on a WEAPON point only items.
+## A table should only carry rows its point's kind reads: enemies on ENEMY, items on WEAPON,
+## scenes on BREAKABLE, chests on CHEST. Any other row would silently spawn nothing.
 static func _table_problems(spawn: SpawnPoint) -> PackedStringArray:
 	var problems: PackedStringArray = []
 	var table_name: String = spawn.table.resource_path.get_file()
+	var kind_name: String = SpawnPoint.Kind.keys()[spawn.kind]
 	if spawn.table.total_weight() <= 0.0:
 		problems.append("SpawnPoint '%s': table %s has no weighted entries." % [spawn.name, table_name])
 	for entry: SpawnEntry in spawn.table.entries:
 		if entry == null:
 			problems.append("SpawnPoint '%s': table %s has an empty slot." % [spawn.name, table_name])
-		elif spawn.kind == SpawnPoint.Kind.ENEMY and entry.item:
-			problems.append("ENEMY SpawnPoint '%s': table %s has an item row (%s); it would spawn nothing." % [spawn.name, table_name, entry.item.display_name])
-		elif spawn.kind == SpawnPoint.Kind.WEAPON and entry.enemy:
-			problems.append("WEAPON SpawnPoint '%s': table %s has an enemy row (%s); it would spawn nothing." % [spawn.name, table_name, entry.enemy.display_name])
+		elif entry.payload_for(spawn.kind) == null and entry.any_payload() != null:
+			problems.append("%s SpawnPoint '%s': table %s has a row for another kind (%s); it would spawn nothing." % [kind_name, spawn.name, table_name, SpawnEntry.payload_name(entry.any_payload())])
 	return problems
 
 

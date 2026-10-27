@@ -1,0 +1,105 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" path="res://world/Breakable.tscn" id="1_base"]
+[ext_resource type="Resource" path="res://data/tables/drops/drop_barrel.tres" id="2_drops"]
+[ext_resource type="Material" path="res://art/materials/wood_dark.tres" id="3_wood_dark"]
+[ext_resource type="Material" path="res://art/materials/steel_dark.tres" id="4_steel_dark"]
+
+[sub_resource type="CylinderShape3D" id="CylinderShape3D_barrel"]
+height = 1.0
+radius = 0.35
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_body"]
+material = ExtResource("3_wood_dark")
+top_radius = 0.33
+bottom_radius = 0.33
+height = 1.0
+radial_segments = 10
+rings = 0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_belly"]
+material = ExtResource("3_wood_dark")
+top_radius = 0.35
+bottom_radius = 0.35
+height = 0.56
+radial_segments = 10
+rings = 0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_hoop_end"]
+material = ExtResource("4_steel_dark")
+top_radius = 0.345
+bottom_radius = 0.345
+height = 0.05
+radial_segments = 10
+rings = 0
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_hoop_belly"]
+material = ExtResource("4_steel_dark")
+top_radius = 0.365
+bottom_radius = 0.365
+height = 0.05
+radial_segments = 10
+rings = 0
+
+[sub_resource type="BoxMesh" id="BoxMesh_stave"]
+material = ExtResource("3_wood_dark")
+size = Vector3(0.18, 0.05, 0.9)
+
+[sub_resource type="BoxMesh" id="BoxMesh_hoop_piece"]
+material = ExtResource("4_steel_dark")
+size = Vector3(0.5, 0.04, 0.06)
+
+[node name="Barrel" instance=ExtResource("1_base")]
+drop_table = ExtResource("2_drops")
+
+[node name="CollisionShape3D" parent="." index="0"]
+position = Vector3(0, 0.5, 0)
+shape = SubResource("CylinderShape3D_barrel")
+
+[node name="Mesh" parent="." index="1"]
+position = Vector3(0, 0.5, 0)
+mesh = SubResource("CylinderMesh_body")
+
+[node name="Belly" type="MeshInstance3D" parent="Mesh"]
+mesh = SubResource("CylinderMesh_belly")
+
+[node name="HoopTop" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, 0.42, 0)
+mesh = SubResource("CylinderMesh_hoop_end")
+
+[node name="HoopBottom" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, -0.42, 0)
+mesh = SubResource("CylinderMesh_hoop_end")
+
+[node name="HoopBellyTop" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, 0.2, 0)
+mesh = SubResource("CylinderMesh_hoop_belly")
+
+[node name="HoopBellyBottom" type="MeshInstance3D" parent="Mesh"]
+position = Vector3(0, -0.2, 0)
+mesh = SubResource("CylinderMesh_hoop_belly")
+
+[node name="StaveN" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0, 0.5, -0.33)
+rotation = Vector3(1.5708, 3.1416, 0)
+mesh = SubResource("BoxMesh_stave")
+
+[node name="StaveE" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0.33, 0.5, 0)
+rotation = Vector3(1.5708, 1.5708, 0)
+mesh = SubResource("BoxMesh_stave")
+
+[node name="StaveS" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0, 0.5, 0.33)
+rotation = Vector3(1.5708, 0, 0)
+mesh = SubResource("BoxMesh_stave")
+
+[node name="StaveW" type="MeshInstance3D" parent="Debris"]
+position = Vector3(-0.33, 0.5, 0)
+rotation = Vector3(1.5708, -1.5708, 0)
+mesh = SubResource("BoxMesh_stave")
+
+[node name="HoopPiece" type="MeshInstance3D" parent="Debris"]
+position = Vector3(0.1, 0.9, 0.15)
+rotation = Vector3(0, 0.7, 0)
+mesh = SubResource("BoxMesh_hoop_piece")
