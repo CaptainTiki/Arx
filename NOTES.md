@@ -1,4 +1,4 @@
-# Steps 1–9 — Swing & Block, Pickups, Generated Dungeon, Spawn Tables, Inventory, Enemy Perception, Generator v2 & Minimap, Connectors, Aimed Branches, Hub Rooms & Halls
+# Steps 1–11 — Swing & Block, Pickups, Generated Dungeon, Spawn Tables, Inventory, Enemy Perception, Generator v2 & Minimap, Connectors, Aimed Branches, Hub Rooms & Halls, Loot v1, Combat Feel
 
 Open in Godot 4.7, press F5. Main scene: `res://main/Main.tscn`. The step-1 room lives on as `res://tests/CombatArena.tscn`, the fixture for the combat smoke test; you can also open it and F6 it to fight one grunt in a known room.
 
@@ -9,6 +9,33 @@ Every Play builds a different floor: a main path of 12 rooms from a start room t
 Enemies stand watch, sweeping their gaze, until they **see** you (12 m, a 110° cone, a clear line to your head) or **hear** you (a fight, a block, a sprint, a dropped item). Then they bark, turn, and come for you, or go and look if they only heard something. Lose them for 3 s and they search where they last saw you, then walk home. Grunts walk in, rear back with a red flash (the windup, turning at most their turn rate to follow you) and lunge into the strike. Skitterers crouch and leap at you from mid-range. Bruisers roar and charge from afar; sidestep one into a wall and it stands there dazed. After any attack the enemy stands still, without turning, through recovery and cooldown. See Steps 4 and 6.
 
 ---
+
+## Step 11: combat feel — poise, charged heavy, shield, guard, openings, room lights
+
+Commits `Combat Feel` → `Cooldown Tracking / Bruiser Tune`. The diagnosis was that every enemy system (telegraph, windup, strike) existed but never ran, because holding LMB flinch-locked a grunt to death and nothing the player did cost anything. The fix was to give the enemy its turn and make the player's turn cost something, not to add juice.
+
+### Player
+- **Directional speed** (`player.gd`): forward 1.0, strafe `strafe_speed_mult` 0.7, back `backpedal_speed_mult` 0.6, blended by input direction; applies to sprint. You can't kite a 3 m/s grunt with a 1.4 m lunge at 3 m/s.
+- **Every swing fires on release.** Press enters `CHARGE` in `weapon_rig.gd`; after `heavy_pose_dead_time` (0.1 s) the weapon draws back (`heavy_pose_offset`/`heavy_pose_rot_deg` on the rig, applied to `ViewPivot` by `_heavy_blend`). On release, `fraction = held / heavy_charge_time`. Below `WeaponData.heavy_threshold` (0.75) it's a light; at or above, a heavy whose damage, hitstop, kick and swing time lerp from the light's numbers to the heavy's by the fraction. `HitInfo.heavy` is set only for a real heavy. Full charge + `heavy_auto_release` (0.8 s) forces the swing. Click-again mid-swing with the button still down flows into the next charge.
+- **Stamina drains during the charge**: `heavy_stamina_cost` spread evenly over `heavy_charge_time` via `Stamina.spend_or_break`; running dry releases on the spot. On release the rig settles the remainder of whichever swing it became. Pool 100, regen 30/s after 0.8 s. Sword 12/30, dagger 6/16, axe 20/45 (light/heavy). Light-light-heavy-breathe sustains; pure spam decays to a swing every ~1.2 s.
+- **Charge meter** (`ui/charge_meter.gd`, `%ChargeMeter` under HUD): visible only while charging. Light colour to the white tick at the threshold, heavy colour past it; a thin red bar beneath fills over the auto-release window. `Hud.set_charge` is fed from `Player._physics_process`.
+- **Blocks cost stamina**: `block_stamina_per_damage` (1.0) per point absorbed, times `WeaponRig.block_cost_mult()` (the shield's, or 1). If the bar runs dry under a block it's a **guard break**: the hit lands, `WeaponRig.break_guard()` locks the rig in `STAGGER` for `guard_break_time` (0.45 s), low clang, big shake.
+- **Shield** (`items/shield_data.gd`, slot `OFFHAND` = 7, paper-doll square bottom-right). Blocks with it bare-handed. `block_cost_mult` 0.4, `block_cone_dot` 0 (whole front half). The view mesh is `%ShieldPivot` in Player.tscn (primitive boxes, palette materials); `ShieldData.rest_*` / `block_*` pose it, lerped by `_shield_blend`. Rest is low-left and edge-on so it covers almost nothing; block is square in front, top around the bottom fifth. A hit while raised shoves it back and returns. `wooden_shield.tres` drops from shieldbearers (weight 3) and treasure rooms (1.5).
+
+### Enemies
+- **Poise** (`EnemyData.poise`): light hits in a row before one staggers. Counter resets on stagger and on entering any attack windup. Heavies always stagger. Grunt 3, shieldbearer 2, skitterer 1, bruiser never (`can_flinch` false). Grunt HP 100 → 50: two lights or one heavy.
+- **Swat** (`pounce_swattable`, `swat_knockback`): a hit or a held block during `POUNCE` drops the skitterer where it is into `RECOVER` with a shove. Super armour no longer covers the leap.
+- **Cooldown tracks**: `COOLDOWN` now turns toward the target at `chase_turn_rate`. `RECOVER` stays facing-locked — that's the earned window. Circling an enemy after its swing no longer buys a second window. Bruiser retuned: HP 250 → 170, windup 1.1 → 0.9 s, cooldown 0.8 → 0.5, `windup_turn_rate` 90 → 220 so you can't walk out of the swing.
+- **Openings** (`EnemyData`): `backstab_mult` 1.5 when the attacker is past `backstab_dot` of the facing (−0.3; shieldbearer −0.5), `sneak_mult` 2.0 when it never saw you (unaware, searching, or still in the alert turn). `HitInfo.bonus` carries the multiplier back so the rig scales kick and hitstop with it.
+- **Guard** (`EnemyData.guard`, shieldbearer): up in IDLE/ALERT/CHASE/SEARCH/COOLDOWN, covers `guard_cone_dot` of the front (0.1, ~160°). Light from the front → `hit.blocked`, no damage, rig plays clang + sparks and a short jolt. Heavy from the front → damage lands, `GUARD_BROKEN` state for `guard_break_time` (1.5 s, "stunned": reels on hits but stays open), then COOLDOWN. The guard is down from WINDUP through RECOVER. The shield arm (`%ArmL`, not in any clip) is posed from code by `_pose_shield_arm`: up / down / broken, exports on the Enemy scene. Shieldbearer: 100 HP, 20 dmg, 0.9 s windup, 1.1 s recover, weight 2.5 in `combat_enemy.tres`; bruiser weight 1 → 2.
+
+### Room lights
+- The Compatibility renderer caps lights per mesh (`max_lights_per_object`, now 16) and globally (`max_renderable_lights`, 32 → 256); the old symptom was whole rooms going dark as the in-view count crossed 32.
+- `Dungeon.light_reach` (2): torches are lit by map group — the player's group plus everything within that many used doorways. Others are doused (no light, no flame, 0.35 s fade; `Torch.set_lit`). `_collect_torches` runs in `set_plan` (rooms are already children), files torches by the group of their cell, and builds group adjacency from used doors. `_relight` on every `player_cell` change. Torches outside a dungeon stay lit.
+
+## Step 10: loot v1 — breakables, chests, per-source drop tables
+
+Commit `Loot v1`. Crates, pots and barrels (`world/Breakable.tscn` + inherited scenes) on the enemy layer so the sword finds them; shatter into pre-placed debris flung along the swing, dust, crack SFX, noise, and a roll on their drop table. Chests (`world/Chest.tscn`, `ChestData` common/rich) open once on E, lid animates, loot spills in front via `Dungeon.drop_loot`. `data/tables/drops/` holds one table per source (barrel, crate, pot, chest, chest_rich, each enemy).
 
 ## Step 9: hub rooms, adaptive halls, doubled floors
 
@@ -963,7 +990,7 @@ On a fresh clone, open the editor once (or run `godot --headless --path . --impo
 - Treasure is still a dice roll, not a guarantee. At step 9's size it's 1.7 per floor, and 6% of floors have none.
 - Branches only start from main-path doors (rooms and hall T's), so asking for many branches falls short when those run out. That happens on 1.9% of floors at step 9's 4–6 branches; at step 8.1's size it was 48%.
 - About 1 seed in 5 restarts because the 12-room main path boxed itself in (a restart is free, about 30 ms). A hall never re-rolls its first pieces, only extends from the end, so a hall that starts into a pocket fails even where another first piece would have led out.
-- A step-9 floor builds 100–170 scenes with 120–180 shadow-casting torches (they fade from 24 m). It builds in about 0.1 s headless; frame rate on a full floor hasn't been looked at.
+- A step-9 floor builds 100–170 scenes with 120–180 torches. It builds in about 0.1 s headless. Torches are lit by room (step 11), so only 10–30 are live at once; a whole floor can stay built.
 - `Hub_5x5`'s platform is only reached by its four ramps; its 0.5 m edge is a wall. Enemies don't pathfind, so one chasing you across the hub can get stuck against that edge.
 - The generated room scenes list every shared resource in their headers, including ones a given room doesn't use. Godot drops the unused ones the first time you save each room in the editor.
 - No pathfinding. CHASE and SEARCH walk straight at their goal, so an enemy that lost you round a corner walks into the wall until SEARCH's 6 s give-up moves it on. A `NavigationRegion3D` baked per room would be the fix.
