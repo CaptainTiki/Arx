@@ -14,10 +14,6 @@
 [ext_resource type="Resource" path="res://weapons/rusted_dagger.tres" id="12_dagger"]
 [ext_resource type="Material" path="res://art/materials/eye_glow.tres" id="13_glow"]
 [ext_resource type="Script" path="res://dungeon/exit_trigger.gd" id="14_exit"]
-[ext_resource type="Script" path="res://world/exit_trigger.gd" id="20_exit_trigger"]
-
-[sub_resource type="BoxShape3D" id="BoxShape3D_exit"]
-size = Vector3(3, 2, 3)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_exit"]
 size = Vector3(3, 3, 3)
@@ -73,15 +69,6 @@ material = ExtResource("5_wall")
 position = Vector3(4, 0.05, 9)
 size = Vector3(3, 0.1, 3)
 material = ExtResource("13_glow")
-
-[node name="ExitTrigger" type="Area3D" parent="."]
-position = Vector3(4, 1, 9)
-collision_layer = 0
-collision_mask = 2
-script = ExtResource("20_exit_trigger")
-
-[node name="ExitShape" type="CollisionShape3D" parent="ExitTrigger"]
-shape = SubResource("BoxShape3D_exit")
 
 [node name="Lights" type="Node3D" parent="."]
 
