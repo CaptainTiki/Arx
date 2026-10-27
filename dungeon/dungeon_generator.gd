@@ -82,6 +82,13 @@ const UNREACHABLE: int = 1 << 20
 ## Fired by generate_async when the last room is in and the spawns are rolled.
 signal floor_ready
 
+
+func _ready() -> void:
+	if entrance_room:
+		for door: Door in entrance_room.get_doors():
+			if door.plug_scene and door.get_child_count() == 0:
+				door.add_child(door.plug_scene.instantiate())
+
 @export_group("Scene")
 ## Rooms are added here. Also the noise hub every spawned enemy gets, and the owner of the map.
 @export var dungeon: Dungeon
@@ -985,12 +992,12 @@ func _clear() -> void:
 		if child == spawned:
 			continue
 		if child == entrance_room:
-			# Stays. Just take last floor's door plugs off its markers.
+			# Stays. With no floor behind it, every doorway gets a plug so it's a closed room.
 			for door: Door in entrance_room.get_doors():
 				door.used = false
-				for plug: Node in door.get_children():
-					door.remove_child(plug)
-					plug.queue_free()
+				_strip_plugs(door)
+				if door.plug_scene:
+					door.add_child(door.plug_scene.instantiate())
 			continue
 		dungeon.remove_child(child)
 		child.queue_free()
@@ -1014,6 +1021,8 @@ func _instance_rooms(plan: Array[Placement], from: int, to: int) -> void:
 		var room: Room
 		if i == 0 and entrance_room:
 			room = entrance_room
+			for door: Door in room.get_doors():
+				_strip_plugs(door)  # _finish_build re-plugs whichever stay unused
 		else:
 			room = placement.template.scene.instantiate() as Room
 			room.name = "%02d_%s" % [i, placement.template.name]
@@ -1026,6 +1035,12 @@ func _instance_rooms(plan: Array[Placement], from: int, to: int) -> void:
 		for index: int in placement.used_doors:
 			doors[index].used = true
 		_rooms.append(room)
+
+
+func _strip_plugs(door: Door) -> void:
+	for plug: Node in door.get_children():
+		door.remove_child(plug)
+		plug.queue_free()
 
 
 ## Door plugs and spawn rolls, once every room is in.
