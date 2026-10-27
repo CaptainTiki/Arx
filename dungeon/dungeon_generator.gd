@@ -142,7 +142,14 @@ func generate(forced_seed: int = 0) -> void:
 func generate_async(forced_seed: int = 0, rooms_per_frame: int = 6) -> void:
 	var t0: int = Time.get_ticks_usec()
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
-	var plan: Array[Placement] = _plan_with_restarts(forced_seed, rng)
+	# Template metadata is read from off-tree instances, so it loads here on the main thread; the
+	# plan itself is pure arithmetic over that and runs on a worker thread while frames keep going.
+	_load_templates()
+	var planner: Thread = Thread.new()
+	planner.start(_plan_with_restarts.bind(forced_seed, rng))
+	while planner.is_alive():
+		await get_tree().process_frame
+	var plan: Array[Placement] = planner.wait_to_finish()
 	var t_plan: int = Time.get_ticks_usec()
 	if plan.is_empty():
 		floor_ready.emit()
@@ -160,7 +167,7 @@ func generate_async(forced_seed: int = 0, rooms_per_frame: int = 6) -> void:
 		i = end
 		await get_tree().process_frame
 	var t_rooms: int = Time.get_ticks_usec()
-	_finish_build(plan, rng)
+	await _finish_build_async(plan, rng, rooms_per_frame)
 	var t_spawn: int = Time.get_ticks_usec()
 	dungeon.set_plan(plan, last_seed)
 	var t_done: int = Time.get_ticks_usec()
@@ -1061,22 +1068,47 @@ func _strip_plugs(door: Door) -> void:
 
 ## Door plugs and spawn rolls, once every room is in.
 func _finish_build(plan: Array[Placement], rng: RandomNumberGenerator) -> void:
-	var rooms: Array[Room] = _rooms
-	for room: Room in rooms:
+	_plug_doors()
+	last_spawn_log.clear()
+	for room_index: int in _rooms.size():
+		_spawn_room(plan, room_index, rng)
+	if print_spawn_log:
+		for line: String in last_spawn_log:
+			print("  " + line)
+
+
+## Same, with a frame between every `rooms_per_frame` rooms' worth of spawns. Enemy scenes are the
+## heavy instances, so this is what keeps the end of the build off one frame.
+func _finish_build_async(plan: Array[Placement], rng: RandomNumberGenerator, rooms_per_frame: int) -> void:
+	_plug_doors()
+	last_spawn_log.clear()
+	var since_frame: int = 0
+	for room_index: int in _rooms.size():
+		_spawn_room(plan, room_index, rng)
+		since_frame += 1
+		if since_frame >= maxi(rooms_per_frame, 1):
+			since_frame = 0
+			await get_tree().process_frame
+	if print_spawn_log:
+		for line: String in last_spawn_log:
+			print("  " + line)
+
+
+func _plug_doors() -> void:
+	for room: Room in _rooms:
 		for door: Door in room.get_doors():
 			if not door.used and door.plug_scene:
 				# Child of the marker = exactly at the marker's transform, and freed with the room.
 				door.add_child(door.plug_scene.instantiate())
-	last_spawn_log.clear()
-	for room_index: int in rooms.size():
-		var room: Room = rooms[room_index]
-		var spawns: Array[SpawnPoint] = room.get_spawn_points()
-		for spawn_index: int in spawns.size():
-			var outcome: String = _spawn(spawns[spawn_index], rng)
-			last_spawn_log.append("room %d (%s) spawn %d → %s" % [room_index, plan[room_index].template.name, spawn_index, outcome])
-	if print_spawn_log:
-		for line: String in last_spawn_log:
-			print("  " + line)
+
+
+## Rolls every spawn point of one room.
+func _spawn_room(plan: Array[Placement], room_index: int, rng: RandomNumberGenerator) -> void:
+	var room: Room = _rooms[room_index]
+	var spawns: Array[SpawnPoint] = room.get_spawn_points()
+	for spawn_index: int in spawns.size():
+		var outcome: String = _spawn(spawns[spawn_index], rng)
+		last_spawn_log.append("room %d (%s) spawn %d → %s" % [room_index, plan[room_index].template.name, spawn_index, outcome])
 
 
 ## Places what one spawn point produces and returns a short description for the log.
