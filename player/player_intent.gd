@@ -10,6 +10,8 @@ var move: Vector2 = Vector2.ZERO
 var look: Vector2 = Vector2.ZERO
 ## LMB went down since the last physics frame.
 var attack_pressed: bool = false
+## LMB is down right now (held through a light = heavy charge).
+var attack_held: bool = false
 var block_held: bool = false
 var sprint_held: bool = false
 ## E went down since the last physics frame.
@@ -95,6 +97,7 @@ func _physics_process(_delta: float) -> void:
 	var active: bool = not _mouse_released and not get_tree().paused
 	move = Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back") if active else Vector2.ZERO
 	block_held = active and Input.is_action_pressed(&"block")
+	attack_held = active and Input.is_action_pressed(&"attack")
 	sprint_held = active and Input.is_action_pressed(&"sprint")
 	attack_pressed = _attack_latched
 	_attack_latched = false

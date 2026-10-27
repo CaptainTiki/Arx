@@ -5,9 +5,9 @@ extends Node
 signal changed(value: float, maximum: float)
 
 @export var max_stamina: float = 100.0
-@export var regen_per_second: float = 25.0
+@export var regen_per_second: float = 30.0
 ## Seconds after the last spend before regen kicks in.
-@export var regen_delay: float = 0.6
+@export var regen_delay: float = 0.8
 
 var current: float = 0.0
 var _regen_wait: float = 0.0
@@ -19,6 +19,16 @@ func _ready() -> void:
 
 func can_spend(amount: float) -> bool:
 	return current >= amount
+
+
+## Spends what it can, down to 0. Returns true if the whole amount was covered (a block that
+## held). False = the bar ran dry under it (a guard break).
+func spend_or_break(amount: float) -> bool:
+	var held: bool = current >= amount
+	current = maxf(current - amount, 0.0)
+	_regen_wait = regen_delay
+	changed.emit(current, max_stamina)
+	return held
 
 
 func try_spend(amount: float) -> bool:

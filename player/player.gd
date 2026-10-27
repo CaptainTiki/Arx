@@ -27,6 +27,10 @@ extends CharacterBody3D
 @export var walk_speed: float = 5.0
 @export var sprint_speed: float = 7.5
 @export var block_speed: float = 2.5
+## Speed as a fraction of the forward speed when moving sideways or backwards. Diagonals blend.
+## You can't kite: a grunt walks at 3 and lunges 1.4 m, so backing off at 3 means blocking instead.
+@export var strafe_speed_mult: float = 0.7
+@export var backpedal_speed_mult: float = 0.6
 ## How fast horizontal velocity reaches target speed, in m/s². High = snappy.
 @export var acceleration: float = 45.0
 
@@ -38,6 +42,11 @@ extends CharacterBody3D
 @export_group("Combat")
 ## dot(forward, to_attacker) above this counts as "in front" for blocking. 0.3 ≈ a 145° cone.
 @export var block_cone_dot: float = 0.3
+## Stamina a held block spends per point of damage it eats. Runs the bar dry = guard break: the
+## block drops, the hit lands, and you're staggered for a beat.
+@export var block_stamina_per_damage: float = 1.0
+@export var guard_break_shake_deg: float = 3.0
+@export var guard_break_shake_time: float = 0.4
 @export var hurt_shake_deg: float = 1.2
 @export var hurt_shake_time: float = 0.25
 @export var death_restart_delay: float = 2.5
@@ -110,7 +119,7 @@ func _physics_process(delta: float) -> void:
 		get_tree().reload_current_scene()
 		return
 	if not _dead:
-		_weapon_rig.update_combat(_intent.attack_pressed, _intent.block_held, delta)
+		_weapon_rig.update_combat(_intent.attack_pressed, _intent.attack_held, _intent.block_held, delta)
 		_update_interact()
 	if _intent.map_pressed:
 		_hud.toggle_full_map()
@@ -124,17 +133,24 @@ func _physics_process(delta: float) -> void:
 func take_hit(hit: HitInfo) -> void:
 	if _dead:
 		return
+	var guard_broke: bool = false
 	if hit.blockable and _weapon_rig.is_blocking and _is_in_front(hit.source):
-		# v1: infinite block, zero damage.
-		hit.blocked = true
-		_weapon_rig.play_block_impact()
-		make_noise(noise_block)
-		return
+		if _stamina.spend_or_break(hit.damage * block_stamina_per_damage):
+			hit.blocked = true
+			_weapon_rig.play_block_impact()
+			make_noise(noise_block)
+			return
+		# Guard break: the bar ran dry under the block. It drops, and the hit lands below.
+		guard_broke = true
+		_weapon_rig.break_guard()
 	# PLACEHOLDER armour: flat reduction, never below 1.
 	var damage: int = maxi(1, hit.damage - _inventory.total_armour())
 	_health.take_hit(HitInfo.new(damage, hit.source, hit.direction, hit.blockable))
 	_hud.flash_damage()
-	_weapon_rig.shake(hurt_shake_deg, hurt_shake_time)
+	if guard_broke:
+		_weapon_rig.shake(guard_break_shake_deg, guard_break_shake_time)
+	else:
+		_weapon_rig.shake(hurt_shake_deg, hurt_shake_time)
 	_hurt_sfx.play()
 
 
@@ -162,6 +178,11 @@ func drop_item(item: ItemData) -> void:
 
 
 ## Tells every enemy within `radius` (scaled by its hearing) where you are.
+## LMB is down right now. The rig asks at the end of a light whether to draw back for a heavy.
+func attack_held() -> bool:
+	return not _dead and _intent.attack_held
+
+
 func make_noise(radius: float) -> void:
 	if dungeon:
 		dungeon.emit_noise(global_position, radius)
@@ -196,7 +217,7 @@ func _move(delta: float) -> void:
 	var wish: Vector3 = global_basis * Vector3(input.x, 0.0, input.y)
 	wish.y = 0.0
 	wish = wish.limit_length(1.0)
-	_move_velocity = _move_velocity.move_toward(wish * _max_speed(), acceleration * delta)
+	_move_velocity = _move_velocity.move_toward(wish * _max_speed() * _direction_speed_mult(input), acceleration * delta)
 	var lunge: Vector3 = _lunge_step(delta)
 	var vertical: float = velocity.y
 	if not is_on_floor():
@@ -261,6 +282,18 @@ func _tick_sprint_noise(delta: float) -> void:
 	if _sprint_step_left <= 0.0:
 		_sprint_step_left = sprint_step_interval
 		make_noise(noise_sprint_step)
+
+
+## 1 straight ahead, strafe_speed_mult sideways, backpedal_speed_mult straight back, blended
+## by how much of the input points each way.
+func _direction_speed_mult(input: Vector2) -> float:
+	if input.is_zero_approx():
+		return 1.0
+	var dir: Vector2 = input.normalized()
+	var forward: float = maxf(-dir.y, 0.0)
+	var back: float = maxf(dir.y, 0.0)
+	var side: float = absf(dir.x)
+	return (forward + back * backpedal_speed_mult + side * strafe_speed_mult) / (forward + back + side)
 
 
 func _max_speed() -> float:

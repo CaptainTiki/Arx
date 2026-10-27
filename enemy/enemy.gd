@@ -57,6 +57,8 @@ var _cooldown_left: float = 0.0
 var _tell_left: float = 0.0
 var _chase_velocity: Vector3 = Vector3.ZERO
 var _knockback: Vector3 = Vector3.ZERO
+## Light hits taken since the last stagger or attack (see EnemyData.poise).
+var _poise_hits: int = 0
 var _strike_direction: Vector3 = Vector3.FORWARD
 var _lunge_spent: bool = false
 var _flash_tween: Tween
@@ -104,6 +106,9 @@ func take_hit(hit: HitInfo) -> void:
 	var stunned: bool = _state == State.WALL_STUN
 	# Super armor through the attack itself: hitting it mid-swing is a trade, not an interrupt.
 	var can_flinch: bool = (data.can_flinch or stunned) and not _in_attack()
+	if can_flinch and not stunned and not hit.heavy:
+		_poise_hits += 1
+		can_flinch = _poise_hits >= data.poise
 	_health.take_hit(hit)
 	if _state != State.DEAD:
 		var push: Vector3 = Vector3(hit.direction.x, 0.0, hit.direction.z).normalized()
@@ -112,6 +117,7 @@ func take_hit(hit: HitInfo) -> void:
 			_knockback = push * data.flinch_knockback
 			_play_timed(&"flinch", data.flinch_time, BLEND_FLINCH)
 		elif can_flinch:
+			_poise_hits = 0
 			_knockback = push * data.flinch_knockback
 			_enter(State.FLINCH)
 		elif was_unaware:
@@ -363,6 +369,8 @@ func _enter(next: State) -> void:
 	var previous: State = _state
 	_state = next
 	_state_time = 0.0
+	if next == State.WINDUP or next == State.CROUCH or next == State.CHARGE_WINDUP:
+		_poise_hits = 0
 	_chase_velocity = Vector3.ZERO
 	match previous:
 		State.RECOVER, State.WALL_STUN:

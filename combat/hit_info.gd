@@ -7,6 +7,8 @@ var source: Node3D
 ## Flattened attacker -> target direction. Used for knockback and flinch facing.
 var direction: Vector3 = Vector3.ZERO
 var blockable: bool = true
+## A charged heavy. Staggers through poise.
+var heavy: bool = false
 ## Set by the receiver when a block ate the hit, so the attacker can react (no slow on a blocked charge).
 var blocked: bool = false
 ## Set by the receiver to change how the hit reads on the attacker's side: the hit puff in this

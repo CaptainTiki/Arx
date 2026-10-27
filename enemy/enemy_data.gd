@@ -12,6 +12,9 @@ enum Behavior { MELEE, POUNCE, CHARGE }
 @export var move_speed: float = 3.0
 ## False = never staggers when hit (bruisers). Still takes damage and flashes.
 @export var can_flinch: bool = true
+## Light hits it takes before one staggers it (1 = every hit). Heavies always stagger. The count
+## resets when it staggers and when it starts an attack, so it's "hits in a row", not a pool.
+@export var poise: int = 1
 ## Uniform size of the whole rig and its collision capsule. Applied on ready.
 @export var body_scale: float = 1.0
 ## Palette material for torso and arms so variants read at a glance. Null = keep the scene's burlap.

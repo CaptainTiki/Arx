@@ -6,9 +6,10 @@
 [resource]
 script = ExtResource("1_data")
 display_name = "Grunt"
-max_hp = 100
+max_hp = 50
 move_speed = 3.0
 can_flinch = true
+poise = 3
 body_scale = 1.0
 trigger_range = 1.8
 attack_reach = 2.3

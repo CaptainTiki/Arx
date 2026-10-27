@@ -19,6 +19,18 @@ extends ItemData
 ## Hitbox length forward from its authored back edge.
 @export var attack_reach: float = 1.4
 
+@export_group("Heavy")
+## Keep LMB held through a light and the weapon draws back; let go for the heavy.
+@export var heavy_damage_mult: float = 2.5
+@export var heavy_stamina_cost: int = 30
+## Seconds held in the drawn-back pose before letting go counts as a heavy. Earlier = cancel.
+@export var heavy_charge_time: float = 0.45
+## Held this long past charged, it lets go on its own.
+@export var heavy_auto_release: float = 0.8
+## The heavy swing plays this much slower than the light: a slower, bigger arc.
+@export var heavy_swing_time_mult: float = 1.2
+@export var heavy_hitstop: float = 0.11
+
 @export_group("Viewmodel")
 ## First-person mesh. Origin = grip, long axis +Y.
 @export var view_mesh: Mesh
