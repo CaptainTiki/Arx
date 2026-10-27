@@ -21,17 +21,23 @@ sky_material = SubResource("ProceduralSkyMaterial_camp")
 [sub_resource type="Environment" id="Environment_camp"]
 background_mode = 2
 sky = SubResource("Sky_camp")
-ambient_light_source = 3
+ambient_light_source = 2
+ambient_light_color = Color(0.78, 0.8, 0.88, 1)
+ambient_light_energy = 1.0
 tonemap_mode = 2
+fog_enabled = true
+fog_light_color = Color(0.05, 0.045, 0.06, 1)
+fog_density = 0.0
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_gate"]
-size = Vector3(2.6, 4, 1.4)
+size = Vector3(2.6, 4, 2.4)
 
 [node name="Camp" type="Node3D"]
 script = ExtResource("1_camp")
 environment = SubResource("Environment_camp")
 
 [node name="Sun" type="DirectionalLight3D" parent="."]
+unique_name_in_owner = true
 transform = Transform3D(0.766, -0.5, 0.404, 0, 0.629, 0.777, -0.643, -0.595, 0.482, 0, 20, 0)
 light_energy = 0.9
 
@@ -79,7 +85,7 @@ collision_mask = 0
 script = ExtResource("2_gate")
 
 [node name="GateShape" type="CollisionShape3D" parent="Gate"]
-position = Vector3(0, 2, 0)
+position = Vector3(0, 2, 0.3)
 shape = SubResource("BoxShape3D_gate")
 
 [node name="Portcullis" type="Node3D" parent="Gate"]
@@ -127,7 +133,7 @@ material = ExtResource("6_steel")
 
 [node name="DoorHinge" type="Node3D" parent="Gate"]
 unique_name_in_owner = true
-position = Vector3(-1.25, 0, 0.4)
+position = Vector3(-1.25, 0, 1.05)
 
 [node name="DoorLeaf" type="CSGBox3D" parent="Gate/DoorHinge"]
 position = Vector3(1.25, 1.72, 0)
@@ -158,7 +164,7 @@ volume_db = -6.0
 
 [node name="DoorSfx" type="AudioStreamPlayer3D" parent="Gate"]
 unique_name_in_owner = true
-position = Vector3(0, 1.5, 0.4)
+position = Vector3(0, 1.5, 1.05)
 stream = ExtResource("11_creak")
 pitch_scale = 0.7
 

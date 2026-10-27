@@ -1,9 +1,18 @@
 class_name Main
 extends Node3D
-## The loop. You start at camp. Turning the key at the gate builds a floor behind the door theatre;
-## walking in and past the entrance room stows the camp; the far exit (or dying, or walking back
-## out) puts you in the yard again and empties the castle. F5 / F6 still rebuild from camp for
-## testing (F6 = same seed).
+## The loop. You start at camp. Turning the key at the gate builds a floor behind the door theatre.
+## Step past the entrance room and the door shuts behind you, daylight fades to torchlight, and the
+## camp is stowed (the gate itself is handed to the dungeon first, so it stays in the wall). Come
+## back to the entrance room and it all comes back. The far exit, dying, or walking out and taking
+## the key empties the castle. F5 / F6 rebuild from camp for testing (F6 = same seed).
+
+## Inside / outside look, faded with the door. Sky stays; it's only ever seen through the gate.
+@export var inside_ambient: Color = Color(0.32, 0.3, 0.42)
+@export var inside_ambient_energy: float = 0.6
+@export var inside_fog_density: float = 0.025
+@export var fade_time: float = 1.8
+## Seconds the stow waits after the door starts closing, so you hear it shut first.
+@export var stow_delay: float = 2.2
 
 @onready var _generator: DungeonGenerator = %DungeonGenerator
 @onready var _player: Player = %Player
@@ -11,17 +20,23 @@ extends Node3D
 @onready var _camp: Camp = %Camp
 @onready var _world_env: WorldEnvironment = %WorldEnvironment
 
-var _dungeon_env: Environment
-var _camp_shown: bool = true
+var _outside_ambient: Color
+var _outside_ambient_energy: float
+var _sun_energy: float
+var _deep: bool = false
+var _fade: Tween
+var _stow_timer: SceneTreeTimer
 
 
 func _ready() -> void:
-	_dungeon_env = _world_env.environment
+	_world_env.environment = _camp.environment
+	_outside_ambient = _camp.environment.ambient_light_color
+	_outside_ambient_energy = _camp.environment.ambient_light_energy
+	_sun_energy = _camp.sun.light_energy
 	_player.respawn_requested.connect(_on_respawn)
 	_dungeon.player_cell_changed.connect(_on_player_cell)
 	_camp.gate.key_turned.connect(_on_key_turned)
 	_camp.gate.key_taken.connect(_on_key_taken)
-	_show_camp(true)
 	_player.place_at(_camp.arrival_gate.global_transform)
 	_player.process_mode = Node.PROCESS_MODE_INHERIT
 
@@ -45,23 +60,42 @@ func _on_key_taken() -> void:
 	_generator.clear()
 
 
-## Camp is up while you're outside or still in the entrance room; stowed once you're deeper.
+## Past the entrance room = deep: door shuts, light fades, camp stows. Back in it = all undone.
 func _on_player_cell(cell: Vector2i) -> void:
 	var inside: bool = _dungeon.map != null and _dungeon.map.room_at(cell) != null
 	var deep: bool = inside and not _dungeon.player_in_start_room()
-	if deep and _camp_shown:
-		_show_camp(false)
-	elif not deep and not _camp_shown:
-		_show_camp(true)
-		_camp.gate.open(true)
+	if deep == _deep:
+		return
+	_deep = deep
+	if deep:
+		_camp.hand_gate_to(_dungeon)
+		_camp.gate.close()
+		_fade_light(true)
+		_stow_timer = get_tree().create_timer(stow_delay)
+		_stow_timer.timeout.connect(_finish_stow)
+	else:
+		_stow_timer = null
+		_camp.set_stowed(false)
+		_camp.hand_gate_to(_camp)
+		_camp.gate.open()
+		_fade_light(false)
+
+
+func _finish_stow() -> void:
+	if _deep and _stow_timer and _stow_timer.time_left <= 0.0:
+		_camp.set_stowed(true)
 
 
 ## The floor is over. From the far exit you come up the garden stairs; otherwise (death) the gate.
 func leave_castle(from_far_exit: bool) -> void:
+	_deep = false
+	_stow_timer = null
+	_camp.set_stowed(false)
+	_camp.hand_gate_to(_camp)
 	_generator.clear()
-	_show_camp(true)
 	_camp.gate.key_in_lock = false
 	_camp.gate.close()
+	_fade_light(false)
 	var arrival: Marker3D = _camp.arrival_garden if from_far_exit else _camp.arrival_gate
 	_player.place_at(arrival.global_transform)
 
@@ -71,10 +105,16 @@ func _on_respawn() -> void:
 	_player.revive()
 
 
-func _show_camp(shown: bool) -> void:
-	_camp_shown = shown
-	_camp.set_stowed(not shown)
-	_world_env.environment = _camp.environment if shown else _dungeon_env
+## Ambient, fog and the sun slide between the outside and inside presets over fade_time.
+func _fade_light(to_inside: bool) -> void:
+	if _fade:
+		_fade.kill()
+	var env: Environment = _world_env.environment
+	_fade = create_tween().set_parallel(true)
+	_fade.tween_property(env, ^"ambient_light_color", inside_ambient if to_inside else _outside_ambient, fade_time)
+	_fade.tween_property(env, ^"ambient_light_energy", inside_ambient_energy if to_inside else _outside_ambient_energy, fade_time)
+	_fade.tween_property(env, ^"fog_density", inside_fog_density if to_inside else 0.0, fade_time)
+	_fade.tween_property(_camp.sun, ^"light_energy", 0.0 if to_inside else _sun_energy, fade_time)
 
 
 func _debug_rebuild(seed_value: int) -> void:

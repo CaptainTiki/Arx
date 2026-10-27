@@ -15,6 +15,7 @@ extends Node3D
 ## Where the far exit (garden stairs) puts you.
 @onready var arrival_garden: Marker3D = %ArrivalGarden
 @onready var _fire_light: OmniLight3D = %FireLight
+@onready var sun: DirectionalLight3D = %Sun
 
 var _fire_energy: float = 0.0
 var _time: float = 0.0
@@ -32,6 +33,15 @@ func _process(delta: float) -> void:
 
 
 ## Show = visible and processing; stow = hidden and frozen (tweens and audio pause with it).
+## The gate is handed to the dungeon before a stow (see Main), so it keeps working inside.
 func set_stowed(stowed: bool) -> void:
 	visible = not stowed
 	process_mode = Node.PROCESS_MODE_DISABLED if stowed else Node.PROCESS_MODE_INHERIT
+
+
+## Moves the gate under `parent` (the dungeon when inside, this camp when outside), keeping its
+## place in the world. Must come back here before the dungeon is cleared or the gate goes with it.
+func hand_gate_to(parent: Node) -> void:
+	if gate.get_parent() == parent:
+		return
+	gate.reparent(parent, true)
