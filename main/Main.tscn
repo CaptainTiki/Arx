@@ -12,6 +12,7 @@
 [ext_resource type="Script" path="res://dungeon/dungeon.gd" id="10_dungeon"]
 [ext_resource type="PackedScene" path="res://world/Chest.tscn" id="11_chest"]
 [ext_resource type="PackedScene" path="res://camp/Camp.tscn" id="12_camp"]
+[ext_resource type="PackedScene" path="res://dungeon/rooms/StartRoom.tscn" id="13_start_room"]
 
 [sub_resource type="Environment" id="Environment_dungeon"]
 background_mode = 1
@@ -40,15 +41,18 @@ script = ExtResource("10_dungeon")
 pickup_scene = ExtResource("4_pickup")
 drop_parent = NodePath("Spawned")
 
+[node name="EntranceRoom" parent="Dungeon" instance=ExtResource("13_start_room")]
+
 [node name="Spawned" type="Node3D" parent="Dungeon"]
 
-[node name="DungeonGenerator" type="Node" parent="." node_paths=PackedStringArray("dungeon", "spawned", "player")]
+[node name="DungeonGenerator" type="Node" parent="." node_paths=PackedStringArray("dungeon", "spawned", "player", "entrance_room")]
 unique_name_in_owner = true
 script = ExtResource("2_generator")
 catalog = ExtResource("3_catalog")
 dungeon = NodePath("../Dungeon")
 spawned = NodePath("../Dungeon/Spawned")
 player = NodePath("../Player")
+entrance_room = NodePath("../Dungeon/EntranceRoom")
 pickup_scene = ExtResource("4_pickup")
 enemy_scene = ExtResource("6_enemy")
 chest_scene = ExtResource("11_chest")

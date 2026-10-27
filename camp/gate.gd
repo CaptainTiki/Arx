@@ -41,19 +41,37 @@ func interact(_player: Player) -> void:
 
 
 ## Chains, portcullis up, then the door creaks inward. `instant` snaps (used when the camp is
-## re-shown with the gate already open).
+## re-shown with the gate already open). Main does this in two halves around the floor build:
+## begin_open (chains) → build → finish_open (door), so the door never opens on an unfinished floor.
 func open(instant: bool = false) -> void:
-	is_open = true
-	_kill()
 	if instant:
+		is_open = true
+		_kill()
 		_portcullis.position.y = portcullis_lift
 		_door_hinge.rotation_degrees.y = door_open_deg
 		return
+	begin_open()
+	finish_open()
+
+
+## Chains and the portcullis. Returns at once; the lift runs on its own tween.
+func begin_open() -> void:
+	is_open = true
+	_kill()
 	_tween = create_tween()
 	_tween.tween_property(_portcullis, ^"position:y", portcullis_lift, portcullis_time).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 	var clanks: int = maxi(1, int(portcullis_time / chain_interval))
 	for i: int in clanks:
 		_tween.parallel().tween_callback(_clank).set_delay(chain_interval * (i + 1))
+
+
+## The door, once the portcullis is up (waits for it if it's still rising).
+func finish_open() -> void:
+	if _tween and _tween.is_running():
+		await _tween.finished
+	if not is_open:
+		return  # Closed again while we waited.
+	_tween = create_tween()
 	_tween.tween_callback(_door_sfx.play)
 	_tween.tween_property(_door_hinge, ^"rotation_degrees:y", door_open_deg, door_time).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 

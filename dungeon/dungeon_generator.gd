@@ -74,6 +74,13 @@ const UNREACHABLE: int = 1 << 20
 @export var min_grid_y: int = -1000000
 ## Whether the START room's player spawn moves the player. Off when the player walks in from camp.
 @export var place_player: bool = true
+## A START room that already lives under `dungeon` and is never freed: the entrance hall the gate
+## opens into. When set, placement 0 reuses it instead of instancing one. Its scene must be the
+## catalog's START template.
+@export var entrance_room: Room
+
+## Fired by generate_async when the last room is in and the spawns are rolled.
+signal floor_ready
 
 @export_group("Scene")
 ## Rooms are added here. Also the noise hub every spawned enemy gets, and the owner of the map.
@@ -106,10 +113,45 @@ var _templates: Dictionary[int, Array] = {}
 
 ## Throws away the current floor and builds a new one. `forced_seed` (nonzero) overrides seed_value,
 ## e.g. last_seed to rebuild the same floor.
+## Builds a whole floor this frame. Tools and tests use this; the game uses generate_async.
 func generate(forced_seed: int = 0) -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	var plan: Array[Placement] = _plan_with_restarts(forced_seed, rng)
+	if plan.is_empty():
+		return
+	_clear()
+	_begin_build()
+	_instance_rooms(plan, 0, plan.size())
+	# The same RNG carries on from planning into the spawn rolls, so the seed fixes both.
+	_finish_build(plan, rng)
+	dungeon.set_plan(plan, last_seed)
+
+
+## Same floor, spread over frames: `rooms_per_frame` rooms go in, then a frame passes. Adding a CSG
+## room to the tree bakes it on the main thread, so this is what keeps the gate theatre smooth.
+## Awaitable; also emits floor_ready.
+func generate_async(forced_seed: int = 0, rooms_per_frame: int = 6) -> void:
+	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	var plan: Array[Placement] = _plan_with_restarts(forced_seed, rng)
+	if plan.is_empty():
+		floor_ready.emit()
+		return
+	_clear()
+	_begin_build()
+	var i: int = 0
+	while i < plan.size():
+		var end: int = mini(i + maxi(rooms_per_frame, 1), plan.size())
+		_instance_rooms(plan, i, end)
+		i = end
+		await get_tree().process_frame
+	_finish_build(plan, rng)
+	dungeon.set_plan(plan, last_seed)
+	floor_ready.emit()
+
+
+func _plan_with_restarts(forced_seed: int, rng: RandomNumberGenerator) -> Array[Placement]:
 	var base_seed: int = forced_seed if forced_seed != 0 else (seed_value if seed_value != 0 else randi())
 	var plan: Array[Placement] = []
-	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	for restart: int in max_restarts + 1:
 		var run_seed: int = base_seed + restart * 7919
 		rng.seed = run_seed
@@ -117,15 +159,10 @@ func generate(forced_seed: int = 0) -> void:
 		if not plan.is_empty():
 			last_seed = run_seed
 			print("Dungeon seed %d: %s%s" % [run_seed, describe_plan(plan, last_stats), " (after %d restart(s))" % restart if restart > 0 else ""])
-			break
+			return plan
 		print("Dungeon seed %d: main path boxed itself in, restarting" % run_seed)
-	if plan.is_empty():
-		push_error("DungeonGenerator: no main path reached an exit after %d restarts from seed %d. The catalog needs more multi-door rooms, or raise max_attempts." % [max_restarts, base_seed])
-		return
-	_clear()
-	# The same RNG carries on from planning into the spawn rolls, so the seed fixes both.
-	_build(plan, rng)
-	dungeon.set_plan(plan, last_seed)
+	push_error("DungeonGenerator: no main path reached an exit after %d restarts from seed %d. The catalog needs more multi-door rooms, or raise max_attempts." % [max_restarts, base_seed])
+	return plan
 
 
 ## Pure layout for one seed: no nodes are placed. Empty if the main path boxed itself in.
@@ -945,28 +982,55 @@ func clear() -> void:
 
 func _clear() -> void:
 	for child: Node in dungeon.get_children():
-		if child != spawned:
-			dungeon.remove_child(child)
-			child.queue_free()
+		if child == spawned:
+			continue
+		if child == entrance_room:
+			# Stays. Just take last floor's door plugs off its markers.
+			for door: Door in entrance_room.get_doors():
+				door.used = false
+				for plug: Node in door.get_children():
+					door.remove_child(plug)
+					plug.queue_free()
+			continue
+		dungeon.remove_child(child)
+		child.queue_free()
 	for child: Node in spawned.get_children():
 		spawned.remove_child(child)
 		child.queue_free()
 
 
-func _build(plan: Array[Placement], rng: RandomNumberGenerator) -> void:
-	var rooms: Array[Room] = []
-	for i: int in plan.size():
+## Rooms of the floor in plan order, filled by _instance_rooms during a build.
+var _rooms: Array[Room] = []
+
+
+func _begin_build() -> void:
+	_rooms.clear()
+
+
+## Instances plan[from..to) into the dungeon. Placement 0 reuses `entrance_room` when it's set.
+func _instance_rooms(plan: Array[Placement], from: int, to: int) -> void:
+	for i: int in range(from, to):
 		var placement: Placement = plan[i]
-		var room: Room = placement.template.scene.instantiate() as Room
-		room.name = "%02d_%s" % [i, placement.template.name]
+		var room: Room
+		if i == 0 and entrance_room:
+			room = entrance_room
+		else:
+			room = placement.template.scene.instantiate() as Room
+			room.name = "%02d_%s" % [i, placement.template.name]
 		room.grid_origin = placement.grid_origin
 		room.turns = placement.turns
 		room.transform = placement_transform(placement.grid_origin, placement.template.footprint, placement.turns)
-		dungeon.add_child(room)
+		if room != entrance_room:
+			dungeon.add_child(room)
 		var doors: Array[Door] = room.get_doors()
 		for index: int in placement.used_doors:
 			doors[index].used = true
-		rooms.append(room)
+		_rooms.append(room)
+
+
+## Door plugs and spawn rolls, once every room is in.
+func _finish_build(plan: Array[Placement], rng: RandomNumberGenerator) -> void:
+	var rooms: Array[Room] = _rooms
 	for room: Room in rooms:
 		for door: Door in room.get_doors():
 			if not door.used and door.plug_scene:

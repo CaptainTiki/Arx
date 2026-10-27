@@ -22,12 +22,12 @@ sky_material = SubResource("ProceduralSkyMaterial_camp")
 background_mode = 2
 sky = SubResource("Sky_camp")
 ambient_light_source = 2
-ambient_light_color = Color(0.78, 0.8, 0.88, 1)
-ambient_light_energy = 1.0
+ambient_light_color = Color(0.42, 0.41, 0.5, 1)
+ambient_light_energy = 0.75
 tonemap_mode = 2
 fog_enabled = true
 fog_light_color = Color(0.05, 0.045, 0.06, 1)
-fog_density = 0.0
+fog_density = 0.012
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_gate"]
 size = Vector3(2.6, 4, 2.4)
@@ -40,6 +40,10 @@ environment = SubResource("Environment_camp")
 unique_name_in_owner = true
 transform = Transform3D(0.766, -0.5, 0.404, 0, 0.629, 0.777, -0.643, -0.595, 0.482, 0, 20, 0)
 light_energy = 0.9
+shadow_enabled = true
+shadow_bias = 0.05
+directional_shadow_mode = 1
+directional_shadow_max_distance = 60.0
 
 [node name="Ground" type="CSGBox3D" parent="."]
 position = Vector3(6, -0.1, -22)
