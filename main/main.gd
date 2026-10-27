@@ -19,6 +19,10 @@ extends Node3D
 
 var _deep: bool = false
 var _stow_timer: SceneTreeTimer
+## Frame-time watch while the gate opens: prints the worst frames and when they landed.
+var _watching: bool = false
+var _watch_start: int = 0
+var _watch_frames: Array[Vector2] = []
 
 
 func _ready() -> void:
@@ -31,6 +35,27 @@ func _ready() -> void:
 	_player.process_mode = Node.PROCESS_MODE_INHERIT
 
 
+func _process(delta: float) -> void:
+	if _watching:
+		var ms: float = delta * 1000.0
+		if ms > 25.0:
+			_watch_frames.append(Vector2((Time.get_ticks_usec() - _watch_start) / 1000.0, ms))
+
+
+func _start_watch() -> void:
+	_watching = true
+	_watch_start = Time.get_ticks_usec()
+	_watch_frames.clear()
+
+
+func _stop_watch(label: String) -> void:
+	_watching = false
+	var parts: PackedStringArray = []
+	for f: Vector2 in _watch_frames:
+		parts.append("%.0fms frame at +%.0fms" % [f.y, f.x])
+	print("Frame watch (%s): %s" % [label, ", ".join(parts) if not parts.is_empty() else "no frame over 25 ms"])
+
+
 func _physics_process(_delta: float) -> void:
 	if _player.intent.regenerate_pressed:
 		_debug_rebuild(0)
@@ -40,9 +65,13 @@ func _physics_process(_delta: float) -> void:
 
 ## The key goes in: chains start, the floor goes in over frames behind them, then the door opens.
 func _on_key_turned() -> void:
+	_start_watch()
 	_camp.gate.begin_open()
 	await _generator.generate_async(0, rooms_per_frame)
+	print("  floor ready at +%.0fms" % ((Time.get_ticks_usec() - _watch_start) / 1000.0))
 	_camp.gate.finish_open()
+	await get_tree().create_timer(4.0).timeout
+	_stop_watch("key turn → 4 s")
 
 
 ## The key comes out (only reachable from outside): shut the gate and empty the castle.

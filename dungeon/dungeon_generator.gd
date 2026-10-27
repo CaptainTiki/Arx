@@ -81,6 +81,8 @@ const UNREACHABLE: int = 1 << 20
 
 ## Fired by generate_async when the last room is in and the spawns are rolled.
 signal floor_ready
+## Print a timing breakdown of each build phase (plan, room batches, spawns, torches).
+@export var profile_build: bool = true
 
 
 func _ready() -> void:
@@ -138,21 +140,35 @@ func generate(forced_seed: int = 0) -> void:
 ## room to the tree bakes it on the main thread, so this is what keeps the gate theatre smooth.
 ## Awaitable; also emits floor_ready.
 func generate_async(forced_seed: int = 0, rooms_per_frame: int = 6) -> void:
+	var t0: int = Time.get_ticks_usec()
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	var plan: Array[Placement] = _plan_with_restarts(forced_seed, rng)
+	var t_plan: int = Time.get_ticks_usec()
 	if plan.is_empty():
 		floor_ready.emit()
 		return
 	_clear()
+	var t_clear: int = Time.get_ticks_usec()
 	_begin_build()
+	var batches: PackedStringArray = []
 	var i: int = 0
 	while i < plan.size():
 		var end: int = mini(i + maxi(rooms_per_frame, 1), plan.size())
+		var tb: int = Time.get_ticks_usec()
 		_instance_rooms(plan, i, end)
+		batches.append("%d-%d: %.1f" % [i, end - 1, (Time.get_ticks_usec() - tb) / 1000.0])
 		i = end
 		await get_tree().process_frame
+	var t_rooms: int = Time.get_ticks_usec()
 	_finish_build(plan, rng)
+	var t_spawn: int = Time.get_ticks_usec()
 	dungeon.set_plan(plan, last_seed)
+	var t_done: int = Time.get_ticks_usec()
+	if profile_build:
+		print("Build profile (ms): plan %.1f, clear %.1f, rooms %.1f over %d batches, spawns %.1f, set_plan/torches %.1f, total %.1f" % [
+			(t_plan - t0) / 1000.0, (t_clear - t_plan) / 1000.0, (t_rooms - t_clear) / 1000.0, batches.size(),
+			(t_spawn - t_rooms) / 1000.0, (t_done - t_spawn) / 1000.0, (t_done - t0) / 1000.0])
+		print("  room batches (ms, wall time incl. the frame they ran in): " + ", ".join(batches))
 	floor_ready.emit()
 
 
