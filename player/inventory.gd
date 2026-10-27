@@ -5,6 +5,10 @@ extends Node
 ## The WEAPON slot is mirrored into the WeaponRig; nothing else equips the rig.
 
 signal changed
+signal gold_changed(gold: int)
+
+## Coins. A counter, not an item: the peddler and the grinder spend it.
+var gold: int = 0
 
 const COLS: int = 6
 const ROWS: int = 4
@@ -21,6 +25,13 @@ func _init() -> void:
 	bag.resize(COLS * ROWS)
 	for slot: int in ItemData.Slot.values():
 		equipped[slot] = null
+
+
+func add_gold(amount: int) -> void:
+	if amount == 0:
+		return
+	gold = maxi(gold + amount, 0)
+	gold_changed.emit(gold)
 
 
 ## Puts `item` in the first free square. False if the bag is full.

@@ -124,6 +124,7 @@ func _ready() -> void:
 	_base_max_stamina = _stamina.max_stamina
 	_base_regen = _stamina.regen_per_second
 	_inventory.changed.connect(_apply_gear_stats)
+	_inventory.gold_changed.connect(_hud.set_gold)
 	_inventory.equip(starting_weapon)
 	_inventory_screen.bind(self)
 	_hud.bind_map(dungeon, self)

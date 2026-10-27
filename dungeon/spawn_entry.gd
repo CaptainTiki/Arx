@@ -12,6 +12,13 @@ extends Resource
 @export var scene: PackedScene
 ## Read by CHEST spawn points.
 @export var chest: ChestData
+## A gold row (drop tables only): coins in this range instead of an item. 0 = not a gold row.
+@export var gold_min: int = 0
+@export var gold_max: int = 0
+
+
+func is_gold() -> bool:
+	return gold_max > 0
 
 
 ## What this row spawns for a spawn point of `kind`, or null for "nothing".
@@ -33,6 +40,10 @@ func any_payload() -> Resource:
 		if payload:
 			return payload
 	return null
+
+
+func is_empty() -> bool:
+	return any_payload() == null and not is_gold()
 
 
 ## Short name for logs: the payload's display name (scene or chest: its file name), or "nothing".

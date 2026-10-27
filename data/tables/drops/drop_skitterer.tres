@@ -9,10 +9,16 @@ script = ExtResource("2_entry")
 weight = 1.0
 item = ExtResource("3_dagger")
 
+[sub_resource type="Resource" id="Entry_gold"]
+script = ExtResource("2_entry")
+weight = 2.0
+gold_min = 2
+gold_max = 5
+
 [sub_resource type="Resource" id="Entry_nothing"]
 script = ExtResource("2_entry")
 weight = 9.0
 
 [resource]
 script = ExtResource("1_table")
-entries = Array[ExtResource("2_entry")]([SubResource("Entry_dagger"), SubResource("Entry_nothing")])
+entries = Array[ExtResource("2_entry")]([SubResource("Entry_dagger"), SubResource("Entry_gold"), SubResource("Entry_nothing")])

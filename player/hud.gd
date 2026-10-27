@@ -15,6 +15,7 @@ extends CanvasLayer
 @onready var _health_text: Label = %HealthText
 @onready var _stamina_bar: ProgressBar = %StaminaBar
 @onready var _charge_meter: ChargeMeter = %ChargeMeter
+@onready var _gold_label: Label = %GoldLabel
 @onready var _damage_flash: ColorRect = %DamageFlash
 @onready var _death_label: Label = %DeathLabel
 @onready var _prompt_label: Label = %PromptLabel
@@ -43,6 +44,10 @@ func bind(health: Health, stamina: Stamina) -> void:
 
 
 ## Both maps read the dungeon's reveal state and follow `player`. No dungeon = no corner map.
+func set_gold(gold: int) -> void:
+	_gold_label.text = "%d gold" % gold
+
+
 ## Heavy charge readout; Player feeds it every physics frame.
 func set_charge(charging: bool, fraction: float, overcharge: float, threshold: float) -> void:
 	_charge_meter.update_charge(charging, fraction, overcharge, threshold)

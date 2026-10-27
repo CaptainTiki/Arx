@@ -52,6 +52,7 @@ var player_cell: Vector2i = NO_CELL:
 
 ## Affixes that drops can roll. Set in Main.tscn.
 @export var affix_pool: AffixPool
+@export var gold_pile_scene: PackedScene = preload("res://world/GoldPile.tscn")
 ## Loot level for this floor: shifts rarity odds and affix ranges. The key sets it later.
 @export var loot_level: int = 1
 
@@ -113,10 +114,15 @@ func drop_loot(table: SpawnTable, at: Vector3, rng: RandomNumberGenerator = null
 	var roller: RandomNumberGenerator = rng if rng else _loot_rng
 	for i: int in count:
 		var entry: SpawnEntry = table.roll(roller)
-		if entry == null or entry.item == null:
+		if entry == null:
 			continue
 		var angle: float = roller.randf() * TAU
 		var offset: Vector3 = Vector3(cos(angle), 0.0, sin(angle)) * roller.randf_range(drop_scatter_min, drop_scatter_max)
+		if entry.is_gold():
+			place_gold(roller.randi_range(entry.gold_min, entry.gold_max), at + offset)
+			continue
+		if entry.item == null:
+			continue
 		var item: ItemData = roll_item(entry.item, roller)
 		place_item(item, at, offset, roller.randf() * TAU)
 		dropped.append(item)
@@ -126,6 +132,19 @@ func drop_loot(table: SpawnTable, at: Vector3, rng: RandomNumberGenerator = null
 
 ## Puts `item` on the floor as a new Pickup, `offset` from `from` (a point on the floor). A short
 ## ray pulls it back from any wall in the way, so it can always be picked up again.
+## Coins on the floor at `at`, scaled by the player's gold find. Walk over them to take them.
+func place_gold(amount: int, at: Vector3) -> GoldPile:
+	var player: Player = get_tree().get_first_node_in_group(&"player") as Player
+	if player:
+		amount = maxi(1, roundi(amount * player.inventory.stat_mult(Stat.Kind.GOLD_FIND_PCT)))
+	var pile: GoldPile = gold_pile_scene.instantiate() as GoldPile
+	pile.amount = amount
+	var parent: Node = drop_parent if drop_parent else self
+	parent.add_child(pile)
+	pile.global_position = Vector3(at.x, at.y + 0.02, at.z)
+	return pile
+
+
 ## A template becomes a dropped item: rarity and affixes rolled at this floor's loot level.
 func roll_item(base: ItemData, rng: RandomNumberGenerator = null) -> ItemData:
 	return ItemRoller.roll(base, loot_level, rng if rng else _loot_rng, affix_pool)
