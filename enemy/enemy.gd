@@ -247,6 +247,10 @@ func _physics_process(delta: float) -> void:
 			if _state_time >= data.recover_time:
 				_enter(State.COOLDOWN)
 		State.COOLDOWN:
+			# Recovery was the opening; cooldown it spends turning back to you, so circling doesn't
+			# buy a second one.
+			if _target_alive() and _perception.can_see:
+				_face_target(data.chase_turn_rate, delta)
 			if _cooldown_left <= 0.0:
 				_enter(State.CHASE)
 		State.FLINCH:
@@ -463,7 +467,7 @@ func _enter(next: State) -> void:
 			_show_tell(data.tell_flash_time)
 			_grunt_sfx.play()
 		State.STRIKE:
-			# Facing locks here for the rest of STRIKE, RECOVER and COOLDOWN.
+			# Facing locks here through STRIKE and RECOVER; COOLDOWN turns back toward the target.
 			_strike_direction = _facing()
 			_lunge_spent = false
 			_play_timed(&"strike", data.strike_time)

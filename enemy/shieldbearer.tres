@@ -6,7 +6,7 @@
 [resource]
 script = ExtResource("1_data")
 display_name = "Shieldbearer"
-max_hp = 80
+max_hp = 100
 move_speed = 2.6
 can_flinch = true
 poise = 2
@@ -24,9 +24,10 @@ windup_turn_rate = 180.0
 tell_flash_time = 0.15
 drop_table = ExtResource("2_drops")
 guard = true
-guard_cone_dot = 0.35
+guard_cone_dot = 0.1
 guard_break_time = 1.5
 guard_break_knockback = 2.0
+backstab_dot = -0.5
 flinch_time = 0.3
 flinch_knockback = 2.5
 knockback_decel = 14.0
