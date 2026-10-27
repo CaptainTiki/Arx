@@ -32,12 +32,19 @@ func refresh() -> void:
 	queue_redraw()
 
 
-## A 2 px frame in the rarity colour for anything magic or better.
+## A frame in the rarity colour, plus pips in the top-right corner: one for magic, two for rare,
+## three for unique. The count is the tell for anyone the colours don't separate for.
 func _draw() -> void:
 	var item: ItemData = get_item()
 	if item == null or not item.is_rolled():
 		return
-	draw_rect(Rect2(Vector2.ONE, size - Vector2.ONE * 2.0), item.rarity_color(), false, 2.0)
+	var color: Color = item.rarity_color()
+	draw_rect(Rect2(Vector2.ONE, size - Vector2.ONE * 2.0), color, false, 2.0)
+	var pips: int = int(item.rarity)
+	for i: int in pips:
+		var at: Vector2 = Vector2(size.x - 6.0 - i * 6.0, 6.0)
+		draw_circle(at, 2.2, Color.BLACK)
+		draw_circle(at, 1.6, color)
 
 
 ## This slot's item as a drag payload (also what _get_drag_data returns).

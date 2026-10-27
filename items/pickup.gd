@@ -17,6 +17,12 @@ extends StaticBody3D
 
 var _reject_tween: Tween
 var _glow: OmniLight3D
+var _sparkles: CPUParticles3D
+
+## Sparkle count and opacity per rarity: louder the rarer. Colour alone doesn't read for everyone.
+const SPARKLE_COUNT: Array[int] = [0, 10, 24, 48]
+const SPARKLE_ALPHA: Array[float] = [0.0, 0.45, 0.8, 1.0]
+const GLOW_ENERGY: Array[float] = [0.0, 0.35, 0.5, 0.7]
 
 
 func _ready() -> void:
@@ -60,18 +66,63 @@ func set_item(new_item: ItemData) -> void:
 	_shape.set_deferred(&"disabled", not has_item)
 	_mesh.mesh = item.world_mesh if has_item else null
 	_rest_on_floor()
-	# Magic and better glow on the floor in their colour, so a drop reads from across the room.
+	# Magic and better: a soft coloured light plus sparkles rising off it; more and brighter the
+	# rarer, so the tier reads from the motion even if the colour doesn't.
 	if has_item and item.is_rolled():
 		if _glow == null:
 			_glow = OmniLight3D.new()
-			_glow.omni_range = 2.2
-			_glow.light_energy = 0.9
-			_glow.position.y = 0.35
+			_glow.omni_range = 1.8
+			_glow.position.y = 0.3
 			add_child(_glow)
 		_glow.light_color = item.rarity_color()
+		_glow.light_energy = GLOW_ENERGY[item.rarity]
 		_glow.visible = true
-	elif _glow:
-		_glow.visible = false
+		if _sparkles == null:
+			_sparkles = _make_sparkles()
+			add_child(_sparkles)
+		_sparkles.amount = SPARKLE_COUNT[item.rarity]
+		var tint: Color = item.rarity_color()
+		tint.a = SPARKLE_ALPHA[item.rarity]
+		_sparkles.color = tint
+		_sparkles.emitting = true
+		_sparkles.visible = true
+	else:
+		if _glow:
+			_glow.visible = false
+		if _sparkles:
+			_sparkles.emitting = false
+			_sparkles.visible = false
+
+
+func _make_sparkles() -> CPUParticles3D:
+	var p: CPUParticles3D = CPUParticles3D.new()
+	var mesh: BoxMesh = BoxMesh.new()
+	mesh.size = Vector3(0.035, 0.035, 0.035)
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.vertex_color_use_as_albedo = true
+	mesh.material = mat
+	p.mesh = mesh
+	p.lifetime = 1.4
+	p.one_shot = false
+	p.explosiveness = 0.0
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.3
+	p.direction = Vector3.UP
+	p.spread = 20.0
+	p.gravity = Vector3(0.0, 0.25, 0.0)
+	p.initial_velocity_min = 0.25
+	p.initial_velocity_max = 0.6
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.2
+	p.position.y = 0.05
+	var fade: Gradient = Gradient.new()
+	fade.set_color(0, Color(1, 1, 1, 0))
+	fade.add_point(0.15, Color(1, 1, 1, 1))
+	fade.set_color(fade.get_point_count() - 1, Color(1, 1, 1, 0))
+	p.color_ramp = fade
+	return p
 
 
 func prompt_text() -> String:
