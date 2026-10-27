@@ -10,6 +10,8 @@
 [ext_resource type="Material" path="res://art/materials/wood.tres" id="8_wood"]
 [ext_resource type="Material" path="res://art/materials/eye_glow.tres" id="9_eyes"]
 [ext_resource type="Texture2D" path="res://art/palette/palette.png" id="10_palette"]
+[ext_resource type="Material" path="res://art/materials/wood_dark.tres" id="11_wood_dark"]
+[ext_resource type="Material" path="res://art/materials/steel.tres" id="12_steel"]
 [ext_resource type="AudioStream" path="res://audio/sfx/enemy_grunt.wav" id="11_grunt"]
 [ext_resource type="AudioStream" path="res://audio/sfx/whoosh.wav" id="12_whoosh"]
 [ext_resource type="Script" path="res://enemy/perception.gd" id="13_perception"]
@@ -56,6 +58,14 @@ size = Vector3(0.2, 0.045, 0.02)
 [sub_resource type="BoxMesh" id="BoxMesh_arm"]
 material = ExtResource("5_burlap")
 size = Vector3(0.13, 0.55, 0.13)
+
+[sub_resource type="BoxMesh" id="BoxMesh_enemy_shield"]
+material = ExtResource("11_wood_dark")
+size = Vector3(0.55, 0.62, 0.05)
+
+[sub_resource type="BoxMesh" id="BoxMesh_enemy_shield_boss"]
+material = ExtResource("12_steel")
+size = Vector3(0.14, 0.14, 0.07)
 
 [sub_resource type="BoxMesh" id="BoxMesh_club"]
 material = ExtResource("8_wood")
@@ -707,6 +717,19 @@ position = Vector3(-0.34, 0.31, 0)
 rotation = Vector3(0.15, 0, -0.12)
 material_overlay = SubResource("StandardMaterial3D_flash")
 mesh = SubResource("BoxMesh_arm")
+
+[node name="Shield" type="MeshInstance3D" parent="Rig/Body/ArmL"]
+unique_name_in_owner = true
+visible = false
+position = Vector3(-0.08, -0.05, -0.14)
+rotation = Vector3(0, 0.35, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_enemy_shield")
+
+[node name="ShieldBoss" type="MeshInstance3D" parent="Rig/Body/ArmL/Shield"]
+position = Vector3(0, 0, -0.03)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_enemy_shield_boss")
 
 [node name="ArmPivot" type="Node3D" parent="Rig/Body"]
 position = Vector3(0.34, 0.58, 0)

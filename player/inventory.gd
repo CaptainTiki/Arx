@@ -59,6 +59,8 @@ func equip(item: ItemData) -> ItemData:
 	equipped[item.slot] = item
 	if item.slot == ItemData.Slot.WEAPON:
 		_sync_weapon()
+	elif item.slot == ItemData.Slot.OFFHAND:
+		_sync_shield()
 	changed.emit()
 	return previous
 
@@ -71,6 +73,8 @@ func unequip(slot: ItemData.Slot) -> ItemData:
 	equipped[slot] = null
 	if slot == ItemData.Slot.WEAPON:
 		_sync_weapon()
+	elif slot == ItemData.Slot.OFFHAND:
+		_sync_shield()
 	changed.emit()
 	return previous
 
@@ -95,3 +99,7 @@ func first_free_index() -> int:
 
 func _sync_weapon() -> void:
 	_weapon_rig.equip(equipped[ItemData.Slot.WEAPON] as WeaponData)
+
+
+func _sync_shield() -> void:
+	_weapon_rig.equip_shield(equipped[ItemData.Slot.OFFHAND] as ShieldData)

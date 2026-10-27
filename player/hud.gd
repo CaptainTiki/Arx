@@ -14,6 +14,7 @@ extends CanvasLayer
 @onready var _health_bar: ProgressBar = %HealthBar
 @onready var _health_text: Label = %HealthText
 @onready var _stamina_bar: ProgressBar = %StaminaBar
+@onready var _charge_meter: ChargeMeter = %ChargeMeter
 @onready var _damage_flash: ColorRect = %DamageFlash
 @onready var _death_label: Label = %DeathLabel
 @onready var _prompt_label: Label = %PromptLabel
@@ -42,6 +43,11 @@ func bind(health: Health, stamina: Stamina) -> void:
 
 
 ## Both maps read the dungeon's reveal state and follow `player`. No dungeon = no corner map.
+## Heavy charge readout; Player feeds it every physics frame.
+func set_charge(charging: bool, fraction: float, overcharge: float, threshold: float) -> void:
+	_charge_meter.update_charge(charging, fraction, overcharge, threshold)
+
+
 func bind_map(dungeon: Dungeon, player: Node3D) -> void:
 	_minimap.bind(dungeon, player)
 	_full_map_view.bind(dungeon, player)

@@ -106,6 +106,7 @@ toggle_map={
 [rendering]
 
 limits/opengl/max_lights_per_object=16
+limits/opengl/max_renderable_lights=256
 
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="gl_compatibility"

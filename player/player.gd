@@ -120,6 +120,7 @@ func _physics_process(delta: float) -> void:
 		return
 	if not _dead:
 		_weapon_rig.update_combat(_intent.attack_pressed, _intent.attack_held, _intent.block_held, delta)
+		_hud.set_charge(_weapon_rig.is_charging(), _weapon_rig.charge_fraction(), _weapon_rig.overcharge_fraction(), _weapon_rig.charge_threshold())
 		_update_interact()
 	if _intent.map_pressed:
 		_hud.toggle_full_map()
@@ -135,7 +136,7 @@ func take_hit(hit: HitInfo) -> void:
 		return
 	var guard_broke: bool = false
 	if hit.blockable and _weapon_rig.is_blocking and _is_in_front(hit.source):
-		if _stamina.spend_or_break(hit.damage * block_stamina_per_damage):
+		if _stamina.spend_or_break(hit.damage * block_stamina_per_damage * _weapon_rig.block_cost_mult()):
 			hit.blocked = true
 			_weapon_rig.play_block_impact()
 			make_noise(noise_block)
@@ -314,7 +315,7 @@ func _is_in_front(source: Node3D) -> bool:
 		return true
 	var forward: Vector3 = -global_basis.z
 	forward.y = 0.0
-	return forward.normalized().dot(to_source.normalized()) > block_cone_dot
+	return forward.normalized().dot(to_source.normalized()) > _weapon_rig.block_cone_dot(block_cone_dot)
 
 
 static func _ease_out(t: float) -> float:

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="ShieldData" format=3]
+
+[ext_resource type="Script" path="res://items/shield_data.gd" id="1_shield"]
+[ext_resource type="Texture2D" path="res://items/shields/icons/wooden_shield.png" id="2_icon"]
+[ext_resource type="Material" path="res://art/materials/wood_dark.tres" id="3_wood"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_board"]
+material = ExtResource("3_wood")
+size = Vector3(0.5, 0.56, 0.05)
+
+[resource]
+script = ExtResource("1_shield")
+display_name = "Wooden Shield"
+slot = 7
+icon = ExtResource("2_icon")
+world_mesh = SubResource("BoxMesh_board")
+block_cost_mult = 0.4
+block_cone_dot = 0.0

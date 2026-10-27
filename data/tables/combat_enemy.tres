@@ -5,6 +5,7 @@
 [ext_resource type="Resource" path="res://enemy/grunt.tres" id="3_grunt"]
 [ext_resource type="Resource" path="res://enemy/skitterer.tres" id="4_skitterer"]
 [ext_resource type="Resource" path="res://enemy/bruiser.tres" id="5_bruiser"]
+[ext_resource type="Resource" path="res://enemy/shieldbearer.tres" id="6_shieldbearer"]
 
 [sub_resource type="Resource" id="Entry_grunt"]
 script = ExtResource("2_entry")
@@ -18,8 +19,13 @@ enemy = ExtResource("4_skitterer")
 
 [sub_resource type="Resource" id="Entry_bruiser"]
 script = ExtResource("2_entry")
-weight = 1.0
+weight = 2.0
 enemy = ExtResource("5_bruiser")
+
+[sub_resource type="Resource" id="Entry_shieldbearer"]
+script = ExtResource("2_entry")
+weight = 2.5
+enemy = ExtResource("6_shieldbearer")
 
 [sub_resource type="Resource" id="Entry_nothing"]
 script = ExtResource("2_entry")
@@ -27,4 +33,4 @@ weight = 2.0
 
 [resource]
 script = ExtResource("1_table")
-entries = Array[ExtResource("2_entry")]([SubResource("Entry_grunt"), SubResource("Entry_skitterer"), SubResource("Entry_bruiser"), SubResource("Entry_nothing")])
+entries = Array[ExtResource("2_entry")]([SubResource("Entry_grunt"), SubResource("Entry_skitterer"), SubResource("Entry_bruiser"), SubResource("Entry_shieldbearer"), SubResource("Entry_nothing")])

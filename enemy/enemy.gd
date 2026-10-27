@@ -6,7 +6,7 @@ extends CharacterBody3D
 ## from mid-range, CHARGE rushes from afar. All tuning comes from `data`; the only literals here are
 ## crossfades, math guards and the named constants below.
 
-enum State { IDLE, ALERT, CHASE, SEARCH, WINDUP, STRIKE, CROUCH, POUNCE, CHARGE_WINDUP, CHARGING, WALL_STUN, RECOVER, COOLDOWN, FLINCH, DEAD }
+enum State { IDLE, ALERT, CHASE, SEARCH, WINDUP, STRIKE, CROUCH, POUNCE, CHARGE_WINDUP, CHARGING, WALL_STUN, RECOVER, COOLDOWN, FLINCH, GUARD_BROKEN, DEAD }
 enum SearchPhase { GOTO, LOOK, RETURN }
 
 ## Animation crossfade times. Presentation plumbing, not enemy tuning.
@@ -34,6 +34,7 @@ const FLOOR_NORMAL_Y: float = 0.7
 @onready var _hitbox_shape: CollisionShape3D = %HitboxShape
 @onready var _rig: Node3D = %Rig
 @onready var _tinted_meshes: Array[MeshInstance3D] = [%Torso, %ArmL, %Arm]
+@onready var _shield_mesh: Node3D = %Shield
 @onready var _anim: AnimationPlayer = %AnimationPlayer
 @onready var _body_shape: CollisionShape3D = %BodyShape
 @onready var _tell_flash: OmniLight3D = %TellFlash
@@ -103,7 +104,23 @@ func take_hit(hit: HitInfo) -> void:
 	var was_unaware: bool = not is_aware() or _state == State.SEARCH or _state == State.ALERT
 	if hit.source:
 		_perception.last_known_pos = hit.source.global_position
-	var stunned: bool = _state == State.WALL_STUN
+	var stunned: bool = _state == State.WALL_STUN or _state == State.GUARD_BROKEN
+	if data.guard and _guard_up() and hit.source and _guard_covers(hit.source):
+		if hit.heavy:
+			# Smashed open. The heavy lands, and the guard stays down for the punish window.
+			hit.guard_broken = true
+			_health.take_hit(hit)
+			if _state != State.DEAD:
+				_knockback = Vector3(hit.direction.x, 0.0, hit.direction.z).normalized() * data.guard_break_knockback
+				_enter(State.GUARD_BROKEN)
+			_make_noise(data.hurt_noise_radius)
+			return
+		# Clang. Nothing gets through, but it knows you're there.
+		hit.blocked = true
+		if was_unaware:
+			_alert(true)
+		_make_noise(data.hurt_noise_radius)
+		return
 	if _state == State.POUNCE and data.pounce_swattable:
 		_health.take_hit(hit)
 		if _state != State.DEAD:
@@ -194,6 +211,11 @@ func _physics_process(delta: float) -> void:
 			_charge_direction = _facing()
 			if _state_time >= data.charge_max_time:
 				_enter(State.RECOVER)
+		State.GUARD_BROKEN:
+			if not _anim.is_playing():
+				_play_loop(&"stun")
+			if _state_time >= data.guard_break_time:
+				_enter(State.COOLDOWN)
 		State.WALL_STUN:
 			if not _anim.is_playing():
 				_play_loop(&"stun")
@@ -388,7 +410,7 @@ func _enter(next: State) -> void:
 		_poise_hits = 0
 	_chase_velocity = Vector3.ZERO
 	match previous:
-		State.RECOVER, State.WALL_STUN:
+		State.RECOVER, State.WALL_STUN, State.GUARD_BROKEN:
 			_cooldown_left = data.cooldown_time
 		State.STRIKE, State.POUNCE:
 			# Method tracks / landing normally close the hitbox; this covers interruptions.
@@ -438,6 +460,9 @@ func _enter(next: State) -> void:
 			_set_hitbox_reach(data.charge_hit_reach)
 			_hitbox.begin_swing()
 			_play_loop(&"charge")
+		State.GUARD_BROKEN:
+			_play_timed(&"flinch", data.flinch_time, BLEND_FLINCH)
+			_grunt_sfx.play()
 		State.WALL_STUN:
 			_play_loop(&"stun")
 			_grunt_sfx.play()
@@ -487,6 +512,22 @@ func _apply_body() -> void:
 	if data.body_material:
 		for mesh: MeshInstance3D in _tinted_meshes:
 			mesh.material_override = data.body_material
+	_shield_mesh.visible = data.guard
+
+
+## The shield is up whenever it isn't attacking, staggered or down.
+func _guard_up() -> bool:
+	match _state:
+		State.IDLE, State.ALERT, State.CHASE, State.SEARCH, State.COOLDOWN:
+			return true
+	return false
+
+
+func _guard_covers(source: Node3D) -> bool:
+	var to_source: Vector3 = _flat(source.global_position - global_position)
+	if to_source.length_squared() < 0.0001:
+		return true
+	return _facing().dot(to_source.normalized()) >= data.guard_cone_dot
 
 
 ## Box runs from the enemy's center forward to `reach`. The shape is local to scene, so this is per enemy.

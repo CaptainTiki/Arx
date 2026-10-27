@@ -109,6 +109,18 @@ enum Behavior { MELEE, POUNCE, CHARGE }
 ## Dazed after running into a wall: the punish window. Hits flinch it but don't end the stun.
 @export var wall_stun_time: float = 2.0
 
+@export_group("Guard")
+## Carries a shield. While the guard is up (idle, chasing, cooling down) a light from the front
+## clangs off: no damage, no stagger. A heavy from the front breaks the guard open for
+## guard_break_time. Hits from the side or back land as normal, and so does anything while it
+## attacks: the guard drops from windup through recovery.
+@export var guard: bool = false
+## Facing dot toward the attacker above which the shield covers.
+@export var guard_cone_dot: float = 0.35
+@export var guard_break_time: float = 1.5
+## Knockback when a heavy breaks the guard.
+@export var guard_break_knockback: float = 2.0
+
 @export_group("Noise")
 ## Radius of the noise it makes when hit (its grunt), before listeners' hearing.
 @export var hurt_noise_radius: float = 7.0

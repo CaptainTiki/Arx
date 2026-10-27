@@ -2,7 +2,7 @@ class_name ItemData
 extends Resource
 ## Base for anything that can lie on the floor and be picked up. Slot decides where it goes when taken.
 
-enum Slot { WEAPON, HEAD, CHEST, HANDS, FEET, RING, TRINKET }
+enum Slot { WEAPON, HEAD, CHEST, HANDS, FEET, RING, TRINKET, OFFHAND }
 
 @export var display_name: String
 @export var slot: Slot

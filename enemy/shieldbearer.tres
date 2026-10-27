@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="EnemyData" format=3]
+
+[ext_resource type="Script" path="res://enemy/enemy_data.gd" id="1_data"]
+[ext_resource type="Resource" path="res://data/tables/drops/drop_shieldbearer.tres" id="2_drops"]
+
+[resource]
+script = ExtResource("1_data")
+display_name = "Shieldbearer"
+max_hp = 80
+move_speed = 2.6
+can_flinch = true
+poise = 2
+body_scale = 1.08
+trigger_range = 1.8
+attack_reach = 2.3
+damage = 20
+windup_time = 0.9
+strike_time = 0.2
+recover_time = 1.1
+cooldown_time = 1.5
+strike_lunge = 1.4
+chase_turn_rate = 460.0
+windup_turn_rate = 180.0
+tell_flash_time = 0.15
+drop_table = ExtResource("2_drops")
+guard = true
+guard_cone_dot = 0.35
+guard_break_time = 1.5
+guard_break_knockback = 2.0
+flinch_time = 0.3
+flinch_knockback = 2.5
+knockback_decel = 14.0
+despawn_delay = 3.0
+flash_color = Color(1, 1, 1, 0.9)
+flash_fade_color = Color(1, 0.15, 0.1, 0.55)
+flash_time = 0.07
+flash_fade_time = 0.11

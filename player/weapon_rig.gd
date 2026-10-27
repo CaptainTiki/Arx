@@ -70,12 +70,21 @@ var is_blocking: bool:
 @onready var _hitbox_shape: CollisionShape3D = %HitboxShape
 @onready var _anim: AnimationPlayer = %AnimationPlayer
 @onready var _view_pivot: Node3D = %ViewPivot
+@onready var _shield_pivot: Node3D = %ShieldPivot
 @onready var _sword_mesh: MeshInstance3D = %SwordMesh
 @onready var _whoosh_sfx: AudioStreamPlayer = %WhooshSfx
 @onready var _impact_sfx: AudioStreamPlayer = %ImpactSfx
 @onready var _clang_sfx: AudioStreamPlayer = %ClangSfx
 
 var _state: State = State.IDLE
+## Offhand shield, or null. Blocks with it even bare-handed. Set through Inventory.
+var shield: ShieldData
+## 0 rest pose, 1 raised. Tweened; applied to ShieldPivot every rendered frame.
+var _shield_blend: float = 0.0
+var _shield_tween: Tween
+## Stamina drained so far by the charge in progress (heavy_stamina_cost spread over the charge).
+var _charge_spent: float = 0.0
+
 var _pending_weapon: WeaponData
 ## Separate flag because a pending null (unequip to fists) is a real request.
 var _has_pending: bool = false
@@ -127,10 +136,10 @@ func update_combat(attack_pressed: bool, attack_held: bool, block_held: bool, de
 		_attack_buffer_left = maxf(attack_buffer_time, delta)
 	match _state:
 		State.IDLE:
-			if weapon == null:
-				pass  # Fists: nothing to swing or block with.
-			elif block_held:
+			if block_held and (weapon or shield):
 				_enter_block()
+			elif weapon == null:
+				pass  # Fists: nothing to swing with.
 			elif _attack_buffer_left > 0.0:
 				_attack_buffer_left = 0.0
 				if attack_held:
@@ -140,6 +149,14 @@ func update_combat(attack_pressed: bool, attack_held: bool, block_held: bool, de
 					try_swing()
 		State.CHARGE:
 			_charge_time += delta
+			# The heavy's cost drains over the charge; running the bar dry lets go right there.
+			var drain: float = minf(weapon.heavy_stamina_cost / maxf(weapon.heavy_charge_time, 0.001) * delta, weapon.heavy_stamina_cost - _charge_spent)
+			if drain > 0.0:
+				var held: bool = _stamina.spend_or_break(drain)
+				_charge_spent += drain
+				if not held:
+					_release_charge()
+					return
 			if not _pose_started and _charge_time >= heavy_pose_dead_time:
 				_pose_started = true
 				_blend_heavy_pose(1.0, heavy_pose_time)
@@ -180,6 +197,9 @@ func update_view(look: Vector2, delta: float, speed_ratio: float) -> void:
 	if weapon:
 		_view_pivot.position = weapon.view_offset + heavy_pose_offset * _heavy_blend
 		_view_pivot.rotation_degrees = weapon.view_rotation + heavy_pose_rot_deg * _heavy_blend
+	if shield:
+		_shield_pivot.position = shield.rest_offset.lerp(shield.block_offset, _shield_blend)
+		_shield_pivot.rotation_degrees = shield.rest_rotation.lerp(shield.block_rotation, _shield_blend)
 
 
 ## Swaps the held weapon; null = fists (no mesh, no swing, no block). Mid-swing it waits and
@@ -192,6 +212,46 @@ func equip(new_weapon: WeaponData) -> void:
 		_has_pending = true
 		return
 	_apply_weapon(new_weapon)
+
+
+## Swaps the offhand shield; null = none. A swap mid-block drops the block so the visuals restart
+## cleanly. Only Inventory calls this.
+func equip_shield(new_shield: ShieldData) -> void:
+	if _state == State.BLOCK:
+		_exit_block()
+	shield = new_shield
+	_shield_blend = 0.0
+	_shield_pivot.visible = shield != null
+
+
+## Stamina cost multiplier for a held block: the shield's, or 1 with just a weapon.
+func block_cost_mult() -> float:
+	return shield.block_cost_mult if shield else 1.0
+
+
+## Facing-dot cone for a held block: the shield's (wider), or `fallback`.
+func block_cone_dot(fallback: float) -> float:
+	return shield.block_cone_dot if shield else fallback
+
+
+func is_charging() -> bool:
+	return _state == State.CHARGE
+
+
+## 0..1 of a full heavy charge.
+func charge_fraction() -> float:
+	return clampf(_charge_time / maxf(weapon.heavy_charge_time, 0.001), 0.0, 1.0) if weapon else 0.0
+
+
+## 0..1 of the window between a full charge and the forced release.
+func overcharge_fraction() -> float:
+	if weapon == null or _charge_time <= weapon.heavy_charge_time:
+		return 0.0
+	return clampf((_charge_time - weapon.heavy_charge_time) / maxf(weapon.heavy_auto_release, 0.001), 0.0, 1.0)
+
+
+func charge_threshold() -> float:
+	return weapon.heavy_threshold if weapon else 0.75
 
 
 ## Pickups and other interactions only work with the rig at rest (not swinging, blocking or equipping).
@@ -226,6 +286,7 @@ func _start_swing(charge: float) -> void:
 func _enter_charge() -> void:
 	_state = State.CHARGE
 	_charge_time = 0.0
+	_charge_spent = 0.0
 	_charge_ready = false
 	_pose_started = false
 	_anim.play(&"RESET", 0.1)
@@ -235,18 +296,14 @@ func _enter_charge() -> void:
 func _release_charge() -> void:
 	var fraction: float = clampf(_charge_time / maxf(weapon.heavy_charge_time, 0.001), 0.0, 1.0)
 	var pose_out: float = weapon.active_start * lerpf(1.0, weapon.heavy_swing_time_mult, fraction)
-	if fraction >= weapon.heavy_threshold:
-		if _stamina.try_spend(weapon.heavy_stamina_cost):
-			# Whip from the drawn-back pose through the rest pose before the hitbox opens.
-			_blend_heavy_pose(0.0, pose_out)
-			_start_swing(fraction)
-			return
-	# Not charged enough, or no stamina for the heavy: it's a light.
-	if _stamina.try_spend(weapon.stamina_cost):
-		_blend_heavy_pose(0.0, pose_out)
-		_start_swing(0.0)
-	else:
-		_cancel_charge()
+	var heavy: bool = fraction >= weapon.heavy_threshold
+	# The charge already drained its share; settle the rest of whichever swing this turned out to be.
+	var owed: float = (weapon.heavy_stamina_cost if heavy else weapon.stamina_cost) - _charge_spent
+	if owed > 0.0:
+		_stamina.spend_or_break(owed)
+	# Whip from the drawn-back pose through the rest pose before the hitbox opens.
+	_blend_heavy_pose(0.0, pose_out)
+	_start_swing(fraction if heavy else 0.0)
 
 
 func _cancel_charge() -> void:
@@ -256,7 +313,7 @@ func _cancel_charge() -> void:
 
 ## A block just ran the stamina bar dry: drop the guard and lock the rig for a beat.
 func break_guard() -> void:
-	_anim.play(&"block_lower", 0.05)
+	_lower_guard()
 	_state = State.STAGGER
 	_stagger_left = guard_break_time
 	_clang_sfx.pitch_scale = 0.7
@@ -272,6 +329,16 @@ func _blend_heavy_pose(target: float, duration: float) -> void:
 
 
 func play_block_impact() -> void:
+	if shield:
+		# Shoved back, then returns to the raised pose.
+		_shield_blend = 0.6
+		_blend_shield(1.0, 0.16)
+		if _player.fx:
+			_player.fx.play_block_spark(_shield_pivot.global_position)
+		_clang_sfx.play()
+		shake(block_shake_deg, block_shake_time)
+		_hitstop(block_hitstop)
+		return
 	_anim.play(&"block_impact")
 	if _player.fx and _sword_mesh.mesh:
 		_player.fx.play_block_spark(_sword_mesh.global_transform * _sword_mesh.mesh.get_aabb().get_center())
@@ -308,9 +375,21 @@ func _on_hit_landed(target: Node3D) -> void:
 	target.call(&"take_hit", hit)
 	_landed_this_swing = true
 	_whoosh_sfx.stop()
+	_player.make_noise(_player.noise_sword_hit)
+	if hit.blocked:
+		# Clanged off a guard: sparks, no blood, a short jolt. The guard is the thing to get past.
+		_clang_sfx.play()
+		if _player.fx:
+			_player.fx.play_block_spark(contact)
+		kick(hit_kick_deg * 0.6)
+		_hitstop(weapon.hitstop * 0.6)
+		return
 	if not hit.muffle_thud:
 		_impact_sfx.play()
-	_player.make_noise(_player.noise_sword_hit)
+	if hit.guard_broken:
+		_clang_sfx.play()
+		if _player.fx:
+			_player.fx.play_block_spark(contact)
 	if _player.fx:
 		_player.fx.play_hit_puff(contact, hit.direction, hit.puff_material)
 	kick(hit_kick_deg.lerp(heavy_hit_kick_deg, _swing_charge))
@@ -334,12 +413,29 @@ func _on_animation_finished(anim_name: StringName) -> void:
 
 func _enter_block() -> void:
 	_state = State.BLOCK
-	_anim.play(&"block_raise", 0.05)
+	if shield:
+		_blend_shield(1.0, shield.raise_time)
+	else:
+		_anim.play(&"block_raise", 0.05)
 
 
 func _exit_block() -> void:
-	_anim.play(&"block_lower", 0.05)
+	_lower_guard()
 	_become_idle()
+
+
+func _lower_guard() -> void:
+	if shield:
+		_blend_shield(0.0, shield.lower_time)
+	if weapon and not shield:
+		_anim.play(&"block_lower", 0.05)
+
+
+func _blend_shield(target: float, duration: float) -> void:
+	if _shield_tween:
+		_shield_tween.kill()
+	_shield_tween = create_tween()
+	_shield_tween.tween_property(self, ^"_shield_blend", target, duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 
 func _become_idle() -> void:

@@ -18,6 +18,10 @@
 [ext_resource type="PackedScene" path="res://ui/InventoryScreen.tscn" id="20_inventory_screen"]
 [ext_resource type="Script" path="res://player/player_effects.gd" id="21_effects"]
 [ext_resource type="PackedScene" path="res://ui/Minimap.tscn" id="22_minimap"]
+[ext_resource type="Script" path="res://ui/charge_meter.gd" id="23_charge_meter"]
+[ext_resource type="Material" path="res://art/materials/wood_dark.tres" id="24_wood_dark"]
+[ext_resource type="Material" path="res://art/materials/steel.tres" id="25_steel"]
+[ext_resource type="Material" path="res://art/materials/steel_dark.tres" id="26_steel_dark"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_body"]
 radius = 0.35
@@ -26,6 +30,22 @@ height = 1.8
 [sub_resource type="BoxShape3D" id="BoxShape3D_hitbox"]
 resource_local_to_scene = true
 size = Vector3(0.6, 0.5, 1.4)
+
+[sub_resource type="BoxMesh" id="BoxMesh_shield_board"]
+material = ExtResource("24_wood_dark")
+size = Vector3(0.5, 0.56, 0.04)
+
+[sub_resource type="BoxMesh" id="BoxMesh_shield_rim_v"]
+material = ExtResource("26_steel_dark")
+size = Vector3(0.04, 0.58, 0.05)
+
+[sub_resource type="BoxMesh" id="BoxMesh_shield_rim_h"]
+material = ExtResource("26_steel_dark")
+size = Vector3(0.52, 0.04, 0.05)
+
+[sub_resource type="BoxMesh" id="BoxMesh_shield_boss"]
+material = ExtResource("25_steel")
+size = Vector3(0.14, 0.14, 0.06)
 
 [sub_resource type="Animation" id="Animation_reset"]
 length = 0.001
@@ -301,6 +321,40 @@ rotation = Vector3(-0.8727, -0.1396, 0.2443)
 cast_shadow = 0
 mesh = ExtResource("9_sword_mesh")
 
+[node name="ShieldPivot" type="Node3D" parent="Head/Camera3D/WeaponRig"]
+unique_name_in_owner = true
+visible = false
+position = Vector3(-0.42, -0.5, -0.45)
+
+[node name="Board" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/ShieldPivot"]
+cast_shadow = 0
+mesh = SubResource("BoxMesh_shield_board")
+
+[node name="RimL" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/ShieldPivot"]
+position = Vector3(-0.24, 0, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_shield_rim_v")
+
+[node name="RimR" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/ShieldPivot"]
+position = Vector3(0.24, 0, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_shield_rim_v")
+
+[node name="RimT" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/ShieldPivot"]
+position = Vector3(0, 0.27, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_shield_rim_h")
+
+[node name="RimB" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/ShieldPivot"]
+position = Vector3(0, -0.27, 0)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_shield_rim_h")
+
+[node name="Boss" type="MeshInstance3D" parent="Head/Camera3D/WeaponRig/ShieldPivot"]
+position = Vector3(0, 0, 0.02)
+cast_shadow = 0
+mesh = SubResource("BoxMesh_shield_boss")
+
 [node name="Hitbox" type="Area3D" parent="Head/Camera3D/WeaponRig"]
 unique_name_in_owner = true
 collision_layer = 0
@@ -370,6 +424,23 @@ grow_vertical = 2
 mouse_filter = 2
 texture = SubResource("AtlasTexture_dot")
 expand_mode = 1
+
+[node name="ChargeMeter" type="Control" parent="HUD"]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -60.0
+offset_top = 14.0
+offset_right = 60.0
+offset_bottom = 34.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("23_charge_meter")
 
 [node name="Bars" type="VBoxContainer" parent="HUD"]
 anchors_preset = 2

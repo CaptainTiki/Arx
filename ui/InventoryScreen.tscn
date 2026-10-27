@@ -85,6 +85,14 @@ offset_right = 88.0
 offset_bottom = 216.0
 slot = 0
 
+[node name="OffhandSlot" parent="Root/PaperDoll" instance=ExtResource("3_equip_slot")]
+layout_mode = 0
+offset_left = 212.0
+offset_top = 212.0
+offset_right = 276.0
+offset_bottom = 300.0
+slot = 7
+
 [node name="ChestSlot" parent="Root/PaperDoll" instance=ExtResource("3_equip_slot")]
 layout_mode = 0
 offset_left = 118.0
