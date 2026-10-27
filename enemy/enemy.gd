@@ -104,6 +104,12 @@ func take_hit(hit: HitInfo) -> void:
 	if hit.source:
 		_perception.last_known_pos = hit.source.global_position
 	var stunned: bool = _state == State.WALL_STUN
+	if _state == State.POUNCE and data.pounce_swattable:
+		_health.take_hit(hit)
+		if _state != State.DEAD:
+			_swat(hit.direction)
+		_make_noise(data.hurt_noise_radius)
+		return
 	# Super armor through the attack itself: hitting it mid-swing is a trade, not an interrupt.
 	var can_flinch: bool = (data.can_flinch or stunned) and not _in_attack()
 	if can_flinch and not stunned and not hit.heavy:
@@ -324,6 +330,15 @@ func _move(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y += get_gravity().y * delta
 	move_and_slide()
+
+
+## Knocked out of a pounce: the leap stops dead, it drops, and lies in the punish window.
+func _swat(push_direction: Vector3) -> void:
+	_pounce_velocity = Vector3.ZERO
+	velocity.y = minf(velocity.y, 0.0)
+	_knockback = _flat(push_direction).normalized() * data.swat_knockback
+	_enter(State.RECOVER)
+	_play_timed(&"flinch", data.flinch_time, BLEND_FLINCH)
 
 
 ## A head-on bump into anything that isn't the player ends the charge in a daze.
@@ -563,6 +578,9 @@ func _on_hit_landed(body: Node3D) -> void:
 	var direction: Vector3 = _flat(body.global_position - global_position).normalized()
 	var hit: HitInfo = HitInfo.new(data.damage, self, direction, true)
 	body.call(&"take_hit", hit)
+	if _state == State.POUNCE and hit.blocked and data.pounce_swattable:
+		_swat(-direction)
+		return
 	if _state == State.CHARGING:
 		# A charge ends on contact either way; only an unblocked one slows you.
 		var player: Player = body as Player

@@ -76,6 +76,10 @@ enum Behavior { MELEE, POUNCE, CHARGE }
 
 @export_subgroup("Pounce")
 @export var pounce_crouch_time: float = 0.4
+## A hit or a block while it's in the air knocks it down: it drops where it is and lies in RECOVER.
+@export var pounce_swattable: bool = true
+## Push speed on a swat, m/s, away from the player.
+@export var swat_knockback: float = 3.0
 ## Launches when within this distance...
 @export var pounce_range: float = 5.0
 ## ...but closer than this it does its normal WINDUP/STRIKE bite instead.

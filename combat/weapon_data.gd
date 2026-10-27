@@ -20,12 +20,17 @@ extends ItemData
 @export var attack_reach: float = 1.4
 
 @export_group("Heavy")
-## Keep LMB held through a light and the weapon draws back; let go for the heavy.
+## Every swing fires on release. Hold and the weapon draws back; the longer the hold (up to
+## heavy_charge_time), the more of the heavy you get. Below heavy_threshold of a full charge it's
+## just a light. From the threshold up, damage, hitstop, kick and swing time scale from the light's
+## values to the full heavy's with the charge fraction, and it staggers through poise.
 @export var heavy_damage_mult: float = 2.5
 @export var heavy_stamina_cost: int = 30
-## Seconds held in the drawn-back pose before letting go counts as a heavy. Earlier = cancel.
-@export var heavy_charge_time: float = 0.45
-## Held this long past charged, it lets go on its own.
+## Seconds of hold for a full charge.
+@export var heavy_charge_time: float = 0.6
+## Fraction of a full charge below which the release is a light.
+@export_range(0.0, 1.0) var heavy_threshold: float = 0.75
+## Held this long past a full charge, it lets go on its own.
 @export var heavy_auto_release: float = 0.8
 ## The heavy swing plays this much slower than the light: a slower, bigger arc.
 @export var heavy_swing_time_mult: float = 1.2

@@ -45,6 +45,12 @@ var player_cell: Vector2i = NO_CELL:
 			return
 		player_cell = value
 		_reveal_at(value)
+		_relight()
+
+## Torches are lit by room: the room you're in plus every room within this many doorways (a hall
+## between two rooms counts as one). Everything else is doused. Keeps the lit count small enough for
+## the Compatibility renderer's per-mesh light cap, and dark rooms ahead read as unexplored.
+@export var light_reach: int = 2
 
 ## The floor's drop RNG, for rolls that go with a drop (how many things a chest holds).
 var loot_rng: RandomNumberGenerator:
@@ -52,6 +58,11 @@ var loot_rng: RandomNumberGenerator:
 		return _loot_rng
 
 var _plan: Array[DungeonGenerator.Placement] = []
+## Torches on this floor, keyed by the map group (room / hall / bridge) they sit in.
+var _torches_by_group: Dictionary[int, Array] = {}
+## Groups reachable through one used doorway, per group.
+var _group_links: Dictionary[int, Array] = {}
+var _lit_groups: Dictionary[int, bool] = {}
 ## Rolls runtime drops. Not seed-reproducible (the fight isn't), but off the global RNG.
 var _loot_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
@@ -76,7 +87,9 @@ func set_plan(plan: Array[DungeonGenerator.Placement], floor_seed: int = 0) -> v
 	_plan = plan
 	map = MapModel.from_plan(plan)
 	revealed.clear()
+	_collect_torches()
 	player_cell = NO_CELL
+	_relight(true)
 	drop_log.clear()
 	_loot_rng.seed = loot_seed if loot_seed != 0 else floor_seed ^ Engine.get_process_frames()
 	revealed_changed.emit()
@@ -144,6 +157,59 @@ func _log_drop(source: String, item: ItemData, at: Vector3) -> void:
 	drop_log.append(line)
 	if print_drop_log:
 		print(line)
+
+
+## Finds every torch under this node and files it by the group of the cell it stands in. Also builds
+## the group adjacency from used doors. Called once per floor, after the rooms are children.
+func _collect_torches() -> void:
+	_torches_by_group.clear()
+	_group_links.clear()
+	_lit_groups.clear()
+	for node: Node in get_tree().get_nodes_in_group(&"torches"):
+		var torch: Torch = node as Torch
+		if torch == null or not is_ancestor_of(torch):
+			continue
+		var room: MapModel.MapRoom = map.room_at(cell_at(torch.global_position))
+		if room == null:
+			continue
+		if not _torches_by_group.has(room.group):
+			_torches_by_group[room.group] = []
+		_torches_by_group[room.group].append(torch)
+	for room: MapModel.MapRoom in map.rooms:
+		if not _group_links.has(room.group):
+			_group_links[room.group] = []
+		for door: MapModel.MapDoor in room.doors:
+			if not door.used:
+				continue
+			var other: MapModel.MapRoom = map.room_at(door.outside())
+			if other and other.group != room.group and not _group_links[room.group].has(other.group):
+				_group_links[room.group].append(other.group)
+
+
+## Lights the groups within light_reach doorways of the player's cell and douses the rest.
+func _relight(instant: bool = false) -> void:
+	if map == null:
+		return
+	var want: Dictionary[int, bool] = {}
+	var here: MapModel.MapRoom = map.room_at(player_cell)
+	if here:
+		var frontier: Array[int] = [here.group]
+		want[here.group] = true
+		for _hop: int in light_reach:
+			var next: Array[int] = []
+			for group: int in frontier:
+				for linked: int in _group_links.get(group, []):
+					if not want.has(linked):
+						want[linked] = true
+						next.append(linked)
+			frontier = next
+	for group: int in _torches_by_group:
+		var lit: bool = want.has(group)
+		if not instant and _lit_groups.get(group, false) == lit:
+			continue
+		_lit_groups[group] = lit
+		for torch: Torch in _torches_by_group[group]:
+			torch.set_lit(lit, instant)
 
 
 ## First visit to a room reveals its whole footprint.

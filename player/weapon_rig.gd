@@ -25,6 +25,8 @@ enum State { IDLE, SWING, CHARGE, BLOCK, STAGGER, EQUIP }
 @export var heavy_pose_rot_deg: Vector3 = Vector3(38.0, 12.0, -28.0)
 ## Seconds to settle into the drawn-back pose.
 @export var heavy_pose_time: float = 0.22
+## A hold shorter than this never moves the weapon, so a tap doesn't twitch it.
+@export var heavy_pose_dead_time: float = 0.1
 ## Small camera nudge the moment the charge is ready, so you feel it without looking at a bar.
 @export var heavy_ready_kick_deg: Vector3 = Vector3(0.5, 0.0, -0.7)
 ## Camera kick when a heavy starts and when it connects.
@@ -85,8 +87,11 @@ var _attack_buffer_left: float = 0.0
 var _charge_time: float = 0.0
 var _charge_ready: bool = false
 var _stagger_left: float = 0.0
-## Whether the swing in flight is a heavy. Read by the hit handler.
+## Whether the swing in flight is a heavy (charged past the threshold). Read by the hit handler.
 var _swing_is_heavy: bool = false
+## 0 for a light, heavy_threshold..1 for a heavy: how much of the heavy's numbers the swing gets.
+var _swing_charge: float = 0.0
+var _pose_started: bool = false
 ## 0 = rest pose, 1 = fully drawn back. Tweened; applied to ViewPivot every rendered frame.
 var _heavy_blend: float = 0.0
 var _heavy_tween: Tween
@@ -127,10 +132,17 @@ func update_combat(attack_pressed: bool, attack_held: bool, block_held: bool, de
 			elif block_held:
 				_enter_block()
 			elif _attack_buffer_left > 0.0:
-				try_swing()
 				_attack_buffer_left = 0.0
+				if attack_held:
+					_enter_charge()
+				else:
+					# Pressed and let go inside one frame, or let go mid-swing: a plain light.
+					try_swing()
 		State.CHARGE:
 			_charge_time += delta
+			if not _pose_started and _charge_time >= heavy_pose_dead_time:
+				_pose_started = true
+				_blend_heavy_pose(1.0, heavy_pose_time)
 			if not _charge_ready and _charge_time >= weapon.heavy_charge_time:
 				_charge_ready = true
 				kick(heavy_ready_kick_deg)
@@ -138,10 +150,7 @@ func update_combat(attack_pressed: bool, attack_held: bool, block_held: bool, de
 				_cancel_charge()
 				_enter_block()
 			elif not attack_held or _charge_time >= weapon.heavy_charge_time + weapon.heavy_auto_release:
-				if _charge_ready:
-					_release_heavy()
-				else:
-					_cancel_charge()
+				_release_charge()
 		State.BLOCK:
 			if not block_held:
 				_exit_block()
@@ -194,39 +203,50 @@ func can_interact() -> bool:
 func try_swing() -> bool:
 	if _state != State.IDLE or weapon == null or not _stamina.try_spend(weapon.stamina_cost):
 		return false
-	_start_swing(false)
+	_start_swing(0.0)
 	return true
 
 
-func _start_swing(heavy: bool) -> void:
+## charge = 0 is a light; heavy_threshold..1 is a heavy that gets that much of the heavy's numbers.
+func _start_swing(charge: float) -> void:
 	_state = State.SWING
-	_swing_is_heavy = heavy
-	var time_mult: float = weapon.heavy_swing_time_mult if heavy else 1.0
+	_swing_charge = charge
+	_swing_is_heavy = charge > 0.0
+	var time_mult: float = lerpf(1.0, weapon.heavy_swing_time_mult, charge)
 	_anim.play(&"swing", 0.05, _swing_speed / time_mult)
 	_landed_this_swing = false
-	_whoosh_sfx.pitch_scale = 0.8 if heavy else 1.0
+	_whoosh_sfx.pitch_scale = lerpf(1.0, 0.8, charge)
 	_whoosh_sfx.play()
 	# The step lands mid-active-window for every weapon, so it carries the body into the hit.
 	_player.apply_lunge(weapon.lunge_distance, (weapon.active_start + weapon.active_end) * 0.5 * time_mult)
-	kick(heavy_swing_kick_deg if heavy else swing_kick_deg)
+	kick(swing_kick_deg.lerp(heavy_swing_kick_deg, charge))
 
 
-## Keep the button held through a light and the rig lands here: the weapon draws back and waits.
+## Button down: nothing swings yet. Past the dead time the weapon draws back; the release decides.
 func _enter_charge() -> void:
 	_state = State.CHARGE
 	_charge_time = 0.0
 	_charge_ready = false
+	_pose_started = false
 	_anim.play(&"RESET", 0.1)
-	_blend_heavy_pose(1.0, heavy_pose_time)
 
 
-func _release_heavy() -> void:
-	if not _stamina.try_spend(weapon.heavy_stamina_cost):
+## Let go (or held too long): a light below the threshold, else a heavy scaled by the charge.
+func _release_charge() -> void:
+	var fraction: float = clampf(_charge_time / maxf(weapon.heavy_charge_time, 0.001), 0.0, 1.0)
+	var pose_out: float = weapon.active_start * lerpf(1.0, weapon.heavy_swing_time_mult, fraction)
+	if fraction >= weapon.heavy_threshold:
+		if _stamina.try_spend(weapon.heavy_stamina_cost):
+			# Whip from the drawn-back pose through the rest pose before the hitbox opens.
+			_blend_heavy_pose(0.0, pose_out)
+			_start_swing(fraction)
+			return
+	# Not charged enough, or no stamina for the heavy: it's a light.
+	if _stamina.try_spend(weapon.stamina_cost):
+		_blend_heavy_pose(0.0, pose_out)
+		_start_swing(0.0)
+	else:
 		_cancel_charge()
-		return
-	# Whip from the drawn-back pose through the rest pose before the hitbox opens.
-	_blend_heavy_pose(0.0, weapon.active_start * weapon.heavy_swing_time_mult)
-	_start_swing(true)
 
 
 func _cancel_charge() -> void:
@@ -281,7 +301,7 @@ func shake(strength_deg: float, duration: float) -> void:
 func _on_hit_landed(target: Node3D) -> void:
 	var to_target: Vector3 = target.global_position - _player.global_position
 	to_target.y = 0.0
-	var damage: int = roundi(weapon.damage * weapon.heavy_damage_mult) if _swing_is_heavy else weapon.damage
+	var damage: int = roundi(weapon.damage * lerpf(1.0, weapon.heavy_damage_mult, _swing_charge))
 	var hit: HitInfo = HitInfo.new(damage, _player, to_target.normalized(), true)
 	hit.heavy = _swing_is_heavy
 	var contact: Vector3 = _hitbox.overlap_point(target)
@@ -293,8 +313,8 @@ func _on_hit_landed(target: Node3D) -> void:
 	_player.make_noise(_player.noise_sword_hit)
 	if _player.fx:
 		_player.fx.play_hit_puff(contact, hit.direction, hit.puff_material)
-	kick(heavy_hit_kick_deg if _swing_is_heavy else hit_kick_deg)
-	_hitstop(weapon.heavy_hitstop if _swing_is_heavy else weapon.hitstop)
+	kick(hit_kick_deg.lerp(heavy_hit_kick_deg, _swing_charge))
+	_hitstop(lerpf(weapon.hitstop, weapon.heavy_hitstop, _swing_charge))
 
 
 func _on_animation_finished(anim_name: StringName) -> void:
@@ -304,8 +324,9 @@ func _on_animation_finished(anim_name: StringName) -> void:
 			_player.make_noise(_player.noise_whiff)
 		var still_held: bool = _player.attack_held()
 		_become_idle()
-		# Button still down after a light (and nothing swapped in under it): draw back for a heavy.
-		if still_held and _state == State.IDLE and weapon and not _swing_is_heavy and _stamina.can_spend(weapon.heavy_stamina_cost):
+		# Pressed again during the swing (and nothing swapped in under it): straight into the next one.
+		if _state == State.IDLE and weapon and still_held and _attack_buffer_left > 0.0:
+			_attack_buffer_left = 0.0
 			_enter_charge()
 	elif anim_name == &"equip":
 		_become_idle()
