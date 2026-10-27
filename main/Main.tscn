@@ -11,6 +11,7 @@
 [ext_resource type="PackedScene" path="res://fx/BlockSpark.tscn" id="9_block_spark"]
 [ext_resource type="Script" path="res://dungeon/dungeon.gd" id="10_dungeon"]
 [ext_resource type="PackedScene" path="res://world/Chest.tscn" id="11_chest"]
+[ext_resource type="PackedScene" path="res://camp/Camp.tscn" id="12_camp"]
 
 [sub_resource type="Environment" id="Environment_dungeon"]
 background_mode = 1
@@ -23,13 +24,18 @@ fog_enabled = true
 fog_light_color = Color(0.05, 0.045, 0.06, 1)
 fog_density = 0.025
 
-[node name="Main" type="Node3D"]
+[node name="Main" type="Node3D" groups=["main"]]
 script = ExtResource("1_main")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+unique_name_in_owner = true
 environment = SubResource("Environment_dungeon")
 
+[node name="Camp" parent="." instance=ExtResource("12_camp")]
+unique_name_in_owner = true
+
 [node name="Dungeon" type="Node3D" parent="." node_paths=PackedStringArray("drop_parent")]
+unique_name_in_owner = true
 script = ExtResource("10_dungeon")
 pickup_scene = ExtResource("4_pickup")
 drop_parent = NodePath("Spawned")
@@ -46,6 +52,8 @@ player = NodePath("../Player")
 pickup_scene = ExtResource("4_pickup")
 enemy_scene = ExtResource("6_enemy")
 chest_scene = ExtResource("11_chest")
+min_grid_y = 0
+place_player = false
 
 [node name="FX" type="Node3D" parent="."]
 script = ExtResource("7_fx")

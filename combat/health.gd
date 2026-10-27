@@ -21,6 +21,12 @@ func set_max_hp(value: int) -> void:
 	changed.emit(hp, max_hp)
 
 
+## Back to full. Used when the player respawns at camp.
+func restore() -> void:
+	hp = max_hp
+	changed.emit(hp, max_hp)
+
+
 func is_dead() -> bool:
 	return hp <= 0
 

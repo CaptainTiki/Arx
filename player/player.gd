@@ -94,7 +94,14 @@ var effects: PlayerEffects:
 		return _effects
 
 
+## Emitted after the death delay when something (Main) is listening; otherwise the scene reloads.
+signal respawn_requested
+
+var _head_rest_y: float = 0.0
+
+
 func _ready() -> void:
+	_head_rest_y = _head.position.y
 	_hud.bind(_health, _stamina)
 	_effects.slow_changed.connect(_hud.set_slowed)
 	_health.died.connect(_on_died)
@@ -330,4 +337,16 @@ func _on_died() -> void:
 	fall.tween_property(_head, "position:y", 0.35, 0.6).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 	fall.parallel().tween_property(_head, "rotation:z", deg_to_rad(25.0), 0.6)
 	await get_tree().create_timer(death_restart_delay, true, false, true).timeout
-	get_tree().reload_current_scene()
+	if respawn_requested.get_connections().is_empty():
+		get_tree().reload_current_scene()
+	else:
+		respawn_requested.emit()
+
+
+## Back on your feet at full health. Main calls this after moving you to camp.
+func revive() -> void:
+	_dead = false
+	_head.position.y = _head_rest_y
+	_head.rotation.z = 0.0
+	_health.restore()
+	_hud.hide_death()

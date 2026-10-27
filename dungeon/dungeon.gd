@@ -9,6 +9,8 @@ extends Node3D
 
 ## A cell was revealed, or the floor was rebuilt and everything hidden again.
 signal revealed_changed
+## The player crossed into a different cell (NO_CELL when outside the castle).
+signal player_cell_changed(cell: Vector2i)
 
 ## Stands for "no cell yet", so the first report after a rebuild always counts as a change.
 const NO_CELL: Vector2i = Vector2i.MIN
@@ -46,6 +48,7 @@ var player_cell: Vector2i = NO_CELL:
 		player_cell = value
 		_reveal_at(value)
 		_relight()
+		player_cell_changed.emit(value)
 
 ## Torches are lit by room: the room you're in plus every room within this many doorways (a hall
 ## between two rooms counts as one). Everything else is doused. Keeps the lit count small enough for
@@ -157,6 +160,14 @@ func _log_drop(source: String, item: ItemData, at: Vector3) -> void:
 	drop_log.append(line)
 	if print_drop_log:
 		print(line)
+
+
+## True while the player stands in the START room (the first placement). The gate is in its wall.
+func player_in_start_room() -> bool:
+	if map == null or player_cell == NO_CELL:
+		return false
+	var room: MapModel.MapRoom = map.room_at(player_cell)
+	return room != null and room == map.rooms[0]
 
 
 ## Finds every torch under this node and files it by the group of the cell it stands in. Also builds

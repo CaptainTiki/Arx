@@ -79,6 +79,10 @@ func show_death() -> void:
 	_death_label.visible = true
 
 
+func hide_death() -> void:
+	_death_label.visible = false
+
+
 func show_prompt(text: String) -> void:
 	_prompt_text = prompt_format % text
 	_prompt_wanted = true

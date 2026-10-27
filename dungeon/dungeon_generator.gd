@@ -69,6 +69,11 @@ const UNREACHABLE: int = 1 << 20
 ## Fresh-seed restarts when the main path boxes itself in, before giving up loudly. A 12-room main
 ## path boxes itself in about 1 seed in 5; 1 seed in 1000 needed 5 restarts, so 10 leaves headroom.
 @export var max_restarts: int = 10
+## Refuse any cell with grid y below this. The camp sits north of the start room's wall (y < 0),
+## so the castle grows south and nothing pokes out into the yard.
+@export var min_grid_y: int = -1000000
+## Whether the START room's player spawn moves the player. Off when the player walks in from camp.
+@export var place_player: bool = true
 
 @export_group("Scene")
 ## Rooms are added here. Also the noise hub every spawned enemy gets, and the owner of the map.
@@ -385,7 +390,7 @@ func _add_connector(layout: Layout, door: OpenDoor, pieces: Array[Placement], ex
 				return null
 			var turns: int = posmod(Door.opposite_of(door.dir) - template.door_dirs[entry], 4)
 			var origin: Vector2i = neighbor - rotate_cell(template.door_cells[entry], template.footprint, turns)
-			if not _fits(origin, rotated_footprint(template.footprint, turns), layout.occupied):
+			if not _fits(origin, rotated_footprint(template.footprint, turns), layout.occupied, min_grid_y):
 				layout.attempts += 1
 				continue
 			var exits: Array[int] = []
@@ -429,7 +434,7 @@ func _try_room(layout: Layout, door: OpenDoor, type: int, min_doors: int, bias: 
 				return null
 			var turns: int = posmod(Door.opposite_of(door.dir) - template.door_dirs[entry], 4)
 			var origin: Vector2i = neighbor - rotate_cell(template.door_cells[entry], template.footprint, turns)
-			if not _fits(origin, rotated_footprint(template.footprint, turns), layout.occupied):
+			if not _fits(origin, rotated_footprint(template.footprint, turns), layout.occupied, min_grid_y):
 				layout.attempts += 1
 				continue
 			return _place(layout, template, origin, turns, door, entry)
@@ -921,12 +926,21 @@ static func _shuffle(rng: RandomNumberGenerator, items: Array) -> void:
 		items[j] = swap
 
 
-static func _fits(origin: Vector2i, size: Vector2i, occupied: Dictionary[Vector2i, Placement]) -> bool:
+static func _fits(origin: Vector2i, size: Vector2i, occupied: Dictionary[Vector2i, Placement], min_y: int = -1000000) -> bool:
+	if origin.y < min_y:
+		return false
 	for z: int in size.y:
 		for x: int in size.x:
 			if occupied.has(origin + Vector2i(x, z)):
 				return false
 	return true
+
+
+## Throws away the current floor (rooms, spawned enemies, drops). Public so Main can empty the
+## castle when the player leaves it.
+func clear() -> void:
+	_clear()
+	dungeon.map = null
 
 
 func _clear() -> void:
@@ -975,7 +989,8 @@ func _build(plan: Array[Placement], rng: RandomNumberGenerator) -> void:
 func _spawn(spawn: SpawnPoint, rng: RandomNumberGenerator) -> String:
 	var local: Transform3D = spawned.global_transform.affine_inverse() * spawn.global_transform
 	if spawn.kind == SpawnPoint.Kind.PLAYER:
-		player.place_at(spawn.global_transform)
+		if place_player:
+			player.place_at(spawn.global_transform)
 		return "player"
 	if spawn.table:
 		var entry: SpawnEntry = spawn.table.roll(rng)

@@ -54,6 +54,12 @@ position = Vector3(11.85, 2, 6)
 size = Vector3(0.3, 4, 12)
 material = ExtResource("5_wall")
 
+[node name="DoorwayN" type="CSGBox3D" parent="Geometry/Walls"]
+position = Vector3(6, 1.75, 0.15)
+operation = 2
+size = Vector3(2.6, 3.5, 0.5)
+material = ExtResource("5_wall")
+
 [node name="DoorwayS" type="CSGBox3D" parent="Geometry/Walls"]
 position = Vector3(6, 1.5, 11.85)
 operation = 2
