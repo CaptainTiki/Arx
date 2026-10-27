@@ -1152,7 +1152,7 @@ func _spawn(spawn: SpawnPoint, rng: RandomNumberGenerator) -> String:
 				chest.transform = local
 				spawned.add_child(chest)
 			_:
-				_place_pickup(local, entry.item)
+				_place_pickup(local, entry.item, rng)
 		return entry.describe(spawn.kind)
 	match spawn.kind:
 		SpawnPoint.Kind.ENEMY:
@@ -1167,12 +1167,13 @@ func _spawn(spawn: SpawnPoint, rng: RandomNumberGenerator) -> String:
 			# No fallback: a chest needs a table (the room's authoring check says so).
 			return "nothing"
 		_:
-			_place_pickup(local, spawn.fixed_item)
+			_place_pickup(local, spawn.fixed_item, rng)
 			return "fixed %s" % spawn.fixed_item.display_name.to_lower()
 	return "fixed %s" % spawn.fixed_scene.resource_path.get_file().get_basename()
 
 
-func _place_pickup(local: Transform3D, item: ItemData) -> void:
+func _place_pickup(local: Transform3D, item: ItemData, rng: RandomNumberGenerator) -> void:
+	item = dungeon.roll_item(item, rng)
 	var pickup: Pickup = pickup_scene.instantiate() as Pickup
 	pickup.transform = local
 	spawned.add_child(pickup)

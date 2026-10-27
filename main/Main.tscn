@@ -13,6 +13,7 @@
 [ext_resource type="PackedScene" path="res://world/Chest.tscn" id="11_chest"]
 [ext_resource type="PackedScene" path="res://camp/Camp.tscn" id="12_camp"]
 [ext_resource type="PackedScene" path="res://dungeon/rooms/StartRoom.tscn" id="13_start_room"]
+[ext_resource type="Resource" path="res://data/affixes/affix_pool.tres" id="14_affix_pool"]
 
 [sub_resource type="Environment" id="Environment_dungeon"]
 background_mode = 1
@@ -38,6 +39,7 @@ unique_name_in_owner = true
 [node name="Dungeon" type="Node3D" parent="." node_paths=PackedStringArray("drop_parent")]
 unique_name_in_owner = true
 script = ExtResource("10_dungeon")
+affix_pool = ExtResource("14_affix_pool")
 pickup_scene = ExtResource("4_pickup")
 drop_parent = NodePath("Spawned")
 

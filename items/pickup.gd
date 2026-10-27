@@ -16,6 +16,7 @@ extends StaticBody3D
 @onready var _nope_sfx: AudioStreamPlayer3D = %NopeSfx
 
 var _reject_tween: Tween
+var _glow: OmniLight3D
 
 
 func _ready() -> void:
@@ -59,6 +60,18 @@ func set_item(new_item: ItemData) -> void:
 	_shape.set_deferred(&"disabled", not has_item)
 	_mesh.mesh = item.world_mesh if has_item else null
 	_rest_on_floor()
+	# Magic and better glow on the floor in their colour, so a drop reads from across the room.
+	if has_item and item.is_rolled():
+		if _glow == null:
+			_glow = OmniLight3D.new()
+			_glow.omni_range = 2.2
+			_glow.light_energy = 0.9
+			_glow.position.y = 0.35
+			add_child(_glow)
+		_glow.light_color = item.rarity_color()
+		_glow.visible = true
+	elif _glow:
+		_glow.visible = false
 
 
 func prompt_text() -> String:

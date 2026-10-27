@@ -50,6 +50,11 @@ var player_cell: Vector2i = NO_CELL:
 		_relight()
 		player_cell_changed.emit(value)
 
+## Affixes that drops can roll. Set in Main.tscn.
+@export var affix_pool: AffixPool
+## Loot level for this floor: shifts rarity odds and affix ranges. The key sets it later.
+@export var loot_level: int = 1
+
 ## Torches are lit by room: the room you're in plus every room within this many doorways (a hall
 ## between two rooms counts as one). Everything else is doused. Keeps the lit count small enough for
 ## the Compatibility renderer's per-mesh light cap, and dark rooms ahead read as unexplored.
@@ -112,14 +117,20 @@ func drop_loot(table: SpawnTable, at: Vector3, rng: RandomNumberGenerator = null
 			continue
 		var angle: float = roller.randf() * TAU
 		var offset: Vector3 = Vector3(cos(angle), 0.0, sin(angle)) * roller.randf_range(drop_scatter_min, drop_scatter_max)
-		place_item(entry.item, at, offset, roller.randf() * TAU)
-		dropped.append(entry.item)
-		_log_drop(source, entry.item, at)
+		var item: ItemData = roll_item(entry.item, roller)
+		place_item(item, at, offset, roller.randf() * TAU)
+		dropped.append(item)
+		_log_drop(source, item, at)
 	return dropped
 
 
 ## Puts `item` on the floor as a new Pickup, `offset` from `from` (a point on the floor). A short
 ## ray pulls it back from any wall in the way, so it can always be picked up again.
+## A template becomes a dropped item: rarity and affixes rolled at this floor's loot level.
+func roll_item(base: ItemData, rng: RandomNumberGenerator = null) -> ItemData:
+	return ItemRoller.roll(base, loot_level, rng if rng else _loot_rng, affix_pool)
+
+
 func place_item(item: ItemData, from: Vector3, offset: Vector3, yaw: float) -> Pickup:
 	if item == null or pickup_scene == null or drop_parent == null:
 		return null

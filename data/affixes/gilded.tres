@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="Affix" format=3]
+
+[ext_resource type="Script" path="res://items/affix.gd" id="1_affix"]
+
+[resource]
+script = ExtResource("1_affix")
+name_part = "Gilded"
+is_prefix = true
+stat = 9
+value_min = 10.0
+value_max = 30.0
+slots = Array[int]([1, 5, 6])
+weight = 1.5

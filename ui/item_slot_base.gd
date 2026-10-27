@@ -29,6 +29,15 @@ func get_item() -> ItemData:
 func refresh() -> void:
 	var item: ItemData = get_item()
 	_icon.texture = item.icon if item else null
+	queue_redraw()
+
+
+## A 2 px frame in the rarity colour for anything magic or better.
+func _draw() -> void:
+	var item: ItemData = get_item()
+	if item == null or not item.is_rolled():
+		return
+	draw_rect(Rect2(Vector2.ONE, size - Vector2.ONE * 2.0), item.rarity_color(), false, 2.0)
 
 
 ## This slot's item as a drag payload (also what _get_drag_data returns).

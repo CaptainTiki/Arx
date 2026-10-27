@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="Affix" format=3]
+
+[ext_resource type="Script" path="res://items/affix.gd" id="1_affix"]
+
+[resource]
+script = ExtResource("1_affix")
+name_part = "Keen"
+is_prefix = true
+stat = 0
+value_min = 8.0
+value_max = 20.0
+slots = Array[int]([0])
+weight = 3.0

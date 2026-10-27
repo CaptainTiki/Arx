@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="AffixPool" format=3]
+
+[ext_resource type="Script" path="res://items/affix_pool.gd" id="1_pool"]
+[ext_resource type="Resource" path="res://data/affixes/keen.tres" id="2_keen"]
+[ext_resource type="Resource" path="res://data/affixes/brutal.tres" id="3_brutal"]
+[ext_resource type="Resource" path="res://data/affixes/crushing.tres" id="4_crushing"]
+[ext_resource type="Resource" path="res://data/affixes/sturdy.tres" id="5_sturdy"]
+[ext_resource type="Resource" path="res://data/affixes/hale.tres" id="6_hale"]
+[ext_resource type="Resource" path="res://data/affixes/fleet.tres" id="7_fleet"]
+[ext_resource type="Resource" path="res://data/affixes/tireless.tres" id="8_tireless"]
+[ext_resource type="Resource" path="res://data/affixes/brawny.tres" id="9_brawny"]
+[ext_resource type="Resource" path="res://data/affixes/gilded.tres" id="10_gilded"]
+[ext_resource type="Resource" path="res://data/affixes/of_the_bear.tres" id="11_of_the_bear"]
+[ext_resource type="Resource" path="res://data/affixes/of_the_fox.tres" id="12_of_the_fox"]
+[ext_resource type="Resource" path="res://data/affixes/of_the_wall.tres" id="13_of_the_wall"]
+[ext_resource type="Resource" path="res://data/affixes/of_haste.tres" id="14_of_haste"]
+[ext_resource type="Resource" path="res://data/affixes/of_wind.tres" id="15_of_wind"]
+[ext_resource type="Resource" path="res://data/affixes/of_the_miser.tres" id="16_of_the_miser"]
+[ext_resource type="Resource" path="res://data/affixes/of_ruin.tres" id="17_of_ruin"]
+
+[resource]
+script = ExtResource("1_pool")
+affixes = Array[Resource]([ExtResource("2_keen"), ExtResource("3_brutal"), ExtResource("4_crushing"), ExtResource("5_sturdy"), ExtResource("6_hale"), ExtResource("7_fleet"), ExtResource("8_tireless"), ExtResource("9_brawny"), ExtResource("10_gilded"), ExtResource("11_of_the_bear"), ExtResource("12_of_the_fox"), ExtResource("13_of_the_wall"), ExtResource("14_of_haste"), ExtResource("15_of_wind"), ExtResource("16_of_the_miser"), ExtResource("17_of_ruin")])

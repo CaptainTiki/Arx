@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="Affix" format=3]
+
+[ext_resource type="Script" path="res://items/affix.gd" id="1_affix"]
+
+[resource]
+script = ExtResource("1_affix")
+name_part = "Fleet"
+is_prefix = true
+stat = 7
+value_min = 4.0
+value_max = 10.0
+slots = Array[int]([4, 5])
+weight = 2.0

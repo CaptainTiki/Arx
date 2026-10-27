@@ -106,18 +106,28 @@ func _update_tooltip() -> void:
 	_tooltip.visible = item != null and visible
 	if item:
 		_tooltip_label.text = describe(item)
+		_tooltip_label.add_theme_color_override(&"font_color", item.rarity_color())
 		_tooltip.reset_size()
 
 
-## Tooltip text: name, slot, and damage or armour.
+## Tooltip text: name (and base name when renamed), rarity + slot, damage or armour, then one
+## line per affix.
 static func describe(item: ItemData) -> String:
-	var lines: PackedStringArray = [item.display_name, str(ItemData.Slot.keys()[item.slot]).capitalize()]
+	var lines: PackedStringArray = [item.display_name]
+	if item.is_rolled() and not item.base_name.is_empty() and item.base_name != item.display_name:
+		lines.append(item.base_name)
+	var kind: String = str(ItemData.Slot.keys()[item.slot]).capitalize()
+	if item.is_rolled():
+		kind = "%s %s" % [str(ItemData.Rarity.keys()[item.rarity]).capitalize(), kind]
+	lines.append(kind)
 	var weapon: WeaponData = item as WeaponData
 	var armor: ArmorData = item as ArmorData
 	if weapon:
 		lines.append("Damage %d" % weapon.damage)
 	elif armor:
 		lines.append("Armour %d" % armor.armour)
+	for affix: Affix in item.affixes:
+		lines.append(affix.describe())
 	return "\n".join(lines)
 
 
